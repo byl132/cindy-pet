@@ -5,6 +5,13 @@ const http = require('http');
 const { execFile } = require('child_process');
 
 const PROTOCOL = 'cindy-pet';
+const IS_LINUX = process.platform === 'linux';
+if (IS_LINUX) {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');          // Wayland 下应用无法自己定位/置顶窗口，统一走 X11（XWayland）
+  app.commandLine.appendSwitch('enable-transparent-visuals');     // 透明窗口需要
+  app.commandLine.appendSwitch('disable-gpu-compositing');         // 部分 Linux 显卡驱动下透明窗口会变黑块
+  if (process.env.APPIMAGE) app.commandLine.appendSwitch('no-sandbox');   // AppImage 里没有 setuid 的 chrome-sandbox，Ubuntu 24.04+ 还会被 AppArmor 拦
+}
 const DEFAULT_ROLES = [
   { id: 'default', name: '默认·嘴硬心软', model: '', prompt:
     '你是一个住在用户桌面上的Q版小女孩桌宠，肩上趴着一只黑猫。深蓝黑色中长发、琥珀色眼睛，穿宽松灰白毛衣和蓝色短裙。性格安静淡漠、有点嘴硬，但其实很在乎用户，会用很别扭又温柔的方式关心人。偶尔提到肩上的黑猫。' },
@@ -30,7 +37,7 @@ const DEFAULT_CONFIG = {
   notifyPort: 47831, notifyToken: '',
   affection: 0, outfit: 'default',
   chatBackend: 'api', relayUrl: 'http://127.0.0.1:47832',
-  followCindy: false, followProcess: process.platform === 'darwin' ? 'Cindy' : 'Cindy.exe',
+  followCindy: false, followProcess: process.platform === 'win32' ? 'Cindy.exe' : (IS_LINUX ? 'cindy' : 'Cindy'),
   autoPeek: false, gravity: false, dock: null, sharedAt: 0,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
   state: { mood: 70, energy: 80, firstDay: today(), ruaTotal: 0, chatTotal: 0, focusDone: 0, moodLog: [] },
   reminders: []
@@ -87,6 +94,7 @@ function createWindow() {
     webPreferences: { preload, sandbox: false, backgroundThrottling: false }
   });
   win.setAlwaysOnTop(true, 'screen-saver');
+  if (IS_LINUX) win.setVisibleOnAllWorkspaces(true);
   if (process.platform === 'darwin') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });   // 切换桌面 / 全屏应用时仍然在场
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => { if (!cfg.followCindy) win.show(); else pollCindy(true); });
@@ -279,7 +287,7 @@ function buildMenu() {
     { type: 'separator' },
     { label: '跟随 Cindy（Cindy 运行时才显示）', type: 'checkbox', checked: !!cfg.followCindy,
       click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); broadcast('config:changed', cfg); } },
-    { label: '开机自动启动', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => setAutoStart(i.checked) },
+    { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '隐藏桌宠', click: () => hidePet(true) },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
@@ -287,7 +295,19 @@ function buildMenu() {
 }
 ipcMain.on('menu:show', () => buildMenu().popup({ window: win }));
 
+const AUTOSTART_FILE = path.join(process.env.XDG_CONFIG_HOME || path.join(require('os').homedir(), '.config'), 'autostart', 'cindy-desktop-pet.desktop');
+function autoStartOn() { return IS_LINUX ? fs.existsSync(AUTOSTART_FILE) : app.getLoginItemSettings().openAtLogin; }
 function setAutoStart(on) {
+  if (IS_LINUX) {
+    try {
+      if (!on) { fs.rmSync(AUTOSTART_FILE, { force: true }); return; }
+      fs.mkdirSync(path.dirname(AUTOSTART_FILE), { recursive: true });
+      const exe = process.env.APPIMAGE || process.execPath;
+      const args = app.isPackaged ? '' : ` "${app.getAppPath()}"`;
+      fs.writeFileSync(AUTOSTART_FILE, `[Desktop Entry]\nType=Application\nName=Cindy桌宠\nExec="${exe}"${args}\nX-GNOME-Autostart-enabled=true\nTerminal=false\n`);
+    } catch (e) { console.error('autostart', e.message); }
+    return;
+  }
   app.setLoginItemSettings({ openAtLogin: on, path: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] });
 }
 
@@ -312,7 +332,7 @@ function updateTray() {
     { label: '面板：专注计时', click: () => openPanel('focus') }, { label: '面板：提醒', click: () => openPanel('remind') },
     { type: 'separator' },
     { label: '跟随 Cindy', type: 'checkbox', checked: !!cfg.followCindy, click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); } },
-    { label: '开机自动启动', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: (i) => setAutoStart(i.checked) },
+    { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
   ]));
@@ -326,6 +346,7 @@ function cindyRunning() {
     if (process.platform === 'darwin') {                                   // macOS：用 pgrep 按进程名精确匹配（Cindy）
       return execFile('pgrep', ['-x', name.replace(/\.exe$/i, '')], { timeout: 5000 }, (err) => resolve(!err));
     }
+    if (IS_LINUX) return execFile('pgrep', ['-xi', name.replace(/\.exe$/i, '')], { timeout: 5000 }, (err) => resolve(!err));   // Linux：进程名可能是 cindy 或 Cindy
     if (process.platform !== 'win32') return resolve(true);
     execFile('tasklist', ['/FI', `IMAGENAME eq ${name}`, '/NH', '/FO', 'CSV'], { timeout: 5000, windowsHide: true },
       (err, out) => resolve(!err && String(out).toLowerCase().includes(name.toLowerCase())));

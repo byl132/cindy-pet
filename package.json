@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
-    "dist:mac": "bash scripts/build-mac.sh"
+    "dist:mac": "bash scripts/build-mac.sh",
+    "dist:linux": "electron-builder --linux AppImage deb --x64"
   },
   "license": "MIT",
   "build": {
@@ -54,6 +55,15 @@
         "LSUIElement": true,
         "NSHumanReadableCopyright": "Cindy 桌宠"
       }
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility",
+      "icon": "build/icon.png",
+      "executableName": "cindy-desktop-pet",
+      "maintainer": "Cindy Desk Pet <noreply@example.com>",
+      "synopsis": "Cindy 桌宠",
+      "desktop": { "entry": { "Name": "Cindy桌宠", "Comment": "Q版桌宠：跟着 AI 任务工作", "StartupWMClass": "cindy-desktop-pet" } }
     },
     "protocols": [
       {
