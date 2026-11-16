@@ -1,6 +1,6 @@
 name: build-mac
 # 在 GitHub 的 macOS 机器上构建 Cindy 桌宠（Windows 电脑无法本地构建 macOS 应用）。
-# 用法：把本项目推到 GitHub 仓库 → Actions → build-mac → Run workflow → 完成后在运行页底部下载 Artifacts。
+# 用法：Actions → build-mac → Run workflow → 完成后在运行页底部下载 Artifacts（dmg 与 zip 分开，单个文件更小）。
 on:
   workflow_dispatch:
   push:
@@ -16,7 +16,11 @@ jobs:
       - run: bash scripts/build-mac.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: Cindy桌宠-mac
-          path: |
-            dist/*.dmg
-            dist/*.zip
+          name: Cindy-mac-dmg
+          path: dist/*.dmg
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cindy-mac-zip
+          path: dist/*.zip
+          compression-level: 0
