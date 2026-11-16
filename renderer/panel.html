@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>桌宠面板</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<nav id="tabs">
+  <button data-tab="status">状态</button>
+  <button data-tab="mood">心情打卡</button>
+  <button data-tab="work">工作台</button>
+  <button data-tab="focus">专注</button>
+  <button data-tab="remind">提醒</button>
+</nav>
+
+<section id="status" class="tab">
+  <div class="hero"><img id="avatar" alt=""><div>
+    <div class="name">桌宠　<span id="lv" class="badge"></span></div>
+    <div class="sub" id="days"></div>
+    <div class="sub" id="moodText"></div>
+  </div></div>
+  <div class="bar"><label>心情 <b id="moodV"></b></label><div class="track"><i id="moodBar"></i></div></div>
+  <div class="bar"><label>精力 <b id="energyV"></b></label><div class="track"><i id="energyBar" class="blue"></i></div></div>
+  <div class="bar"><label>好感度 <b id="affV"></b></label><div class="track"><i id="affBar" class="pink"></i></div></div>
+  <div class="grid">
+    <div class="card"><b id="sRua">0</b><span>被摸摸</span></div>
+    <div class="card"><b id="sChat">0</b><span>聊天</span></div>
+    <div class="card"><b id="sFocus">0</b><span>专注次数</span></div>
+    <div class="card"><b id="sStreak">0</b><span>打卡连续天数</span></div>
+  </div>
+  <div class="row">
+    <button data-do="drink">喂热饮（+精力）</button>
+    <button data-do="cheer">一起欢呼（+心情）</button>
+    <button data-do="praise">夸夸它</button>
+    <button data-do="peek">叫它趴边上</button>
+  </div>
+</section>
+
+<section id="mood" class="tab">
+  <h3>今天心情怎么样？</h3>
+  <div id="emojis">
+    <button data-v="5" title="很开心">😄</button><button data-v="4" title="不错">🙂</button><button data-v="3" title="一般">😐</button>
+    <button data-v="2" title="有点低落">😟</button><button data-v="1" title="很难过">😭</button>
+  </div>
+  <input id="note" placeholder="想记一句吗？（可不填）" maxlength="80">
+  <div class="row"><button id="saveMood" class="primary">记下来</button><span id="moodMsg" class="sub"></span></div>
+  <h3>最近 14 天</h3>
+  <canvas id="chart" width="420" height="150"></canvas>
+  <div id="moodList"></div>
+</section>
+
+<section id="work" class="tab">
+  <h3>AI 工作状态</h3>
+  <div class="hero"><div><div class="name" id="wState">空闲</div><div class="sub" id="wDetail"></div></div></div>
+  <h3>用量与预算</h3>
+  <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+    <div class="card"><b id="wToday">—</b><span>今日 tokens</span></div>
+    <div class="card"><b id="wMonth">—</b><span>本月 tokens</span></div>
+  </div>
+  <div class="bar"><label>今日预算剩余 <b id="wDV"></b></label><div class="track"><i id="wDB" class="blue"></i></div></div>
+  <div class="bar"><label>本月预算剩余 <b id="wMV"></b></label><div class="track"><i id="wMB" class="pink"></i></div></div>
+  <div class="sub" id="wNote"></div>
+  <h3>项目概览</h3>
+  <div id="wProject" class="sub">在 Cindy 的“桌宠”页面里点“工作台 → 选择项目文件夹”后，这里会显示概览。</div>
+  <p class="sub">预算、项目文件夹和任务看板在 Cindy 的“桌宠”页面里设置。其他 AI（Claude Code、Codex）也可以用 integrations 里的钩子让桌宠跟着干活。</p>
+</section>
+
+<section id="focus" class="tab">
+  <h3>专注计时</h3>
+  <div class="row center" id="presets">
+    <button data-m="25" data-b="5" class="on">25 / 5</button><button data-m="15" data-b="3">15 / 3</button><button data-m="50" data-b="10">50 / 10</button>
+  </div>
+  <div id="clock">25:00</div>
+  <div class="sub center" id="phase">准备开始</div>
+  <div class="row center"><button id="fStart" class="primary">开始</button><button id="fPause">暂停</button><button id="fReset">重置</button></div>
+  <p class="sub center">专注结束时，桌宠会欢呼并提醒你休息。</p>
+</section>
+
+<section id="remind" class="tab">
+  <h3>添加提醒</h3>
+  <input id="rText" placeholder="提醒内容，例如：喝水 / 开会" maxlength="60">
+  <div class="row">
+    <select id="rMode"><option value="in">多少分钟后</option><option value="at">每天/今天几点</option></select>
+    <input id="rIn" type="number" min="1" value="30" style="width:90px">
+    <input id="rAt" type="time" value="09:00" style="display:none">
+    <label class="inline"><input id="rDaily" type="checkbox"> 每天重复</label>
+  </div>
+  <div class="row"><button id="rAdd" class="primary">添加</button></div>
+  <h3>已设置</h3>
+  <div id="rList"></div>
+</section>
+<script src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "_说明": "把 hooks 合并进 ~/.claude/settings.json；路径改成你的实际位置。UserPromptSubmit/PreToolUse 让桌宠开工，Stop 让它欢呼，Notification 让它举手等你。",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\\\Users\\\\你的用户名\\\\AppData\\\\Local\\\\Programs\\\\Cindy桌宠\\\\resources\\\\integrations\\\\deskpet-cli.cjs\" claude-hook"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\\\Users\\\\你的用户名\\\\AppData\\\\Local\\\\Programs\\\\Cindy桌宠\\\\resources\\\\integrations\\\\deskpet-cli.cjs\" claude-hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\\\Users\\\\你的用户名\\\\AppData\\\\Local\\\\Programs\\\\Cindy桌宠\\\\resources\\\\integrations\\\\deskpet-cli.cjs\" claude-hook"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\\\Users\\\\你的用户名\\\\AppData\\\\Local\\\\Programs\\\\Cindy桌宠\\\\resources\\\\integrations\\\\deskpet-cli.cjs\" claude-hook"
+          }
+        ]
+      }
+    ]
+  }
+}

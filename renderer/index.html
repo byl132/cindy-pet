@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <div id="chat" class="ui hidden">
+    <div id="chat-head"><span id="chat-role"></span><button id="chat-close" title="关闭">×</button></div>
+    <div id="log"></div>
+    <form id="chat-form"><input id="chat-input" autocomplete="off" placeholder="和我说点什么…"><button type="submit">发送</button></form>
+  </div>
+  <div id="bubble" class="ui hidden"></div>
+  <div id="fx"></div>
+  <img id="sprite" alt="">
+</div>
+<script src="pet.js"></script>
+</body>
+</html>

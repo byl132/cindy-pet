@@ -1,0 +1,10 @@
+node_modules
+dist
+release*
+raw
+__pycache__
+*.log
+*.err
+*.cindy
+*.cshare
+.DS_Store

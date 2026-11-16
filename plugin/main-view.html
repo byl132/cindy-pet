@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>桌宠</title>
+<link rel="stylesheet" href="/main-view.css">
+</head>
+<body>
+<div id="app">
+  <header id="bar">
+    <div class="group" id="outfits"></div>
+    <div class="group" id="actions"></div>
+    <div class="group right">
+      <button id="dashBtn" class="chip" type="button">工作台</button>
+      <label class="sync" title="服装、角色、称呼双向同步；这里的聊天回复也会同步给桌面版桌宠"><input type="checkbox" id="sync"> 与桌面版同步</label>
+      <span id="dot" class="dot" title="桌面版状态"></span>
+    </div>
+  </header>
+  <main id="stage">
+    <div id="ground"></div>
+    <div id="bubble" hidden></div>
+    <div id="fx"></div>
+    <aside id="dash" hidden>
+      <div class="dhead"><b>工作台</b><span id="dashState" class="sub"></span><button id="dashClose" class="mini" type="button">×</button></div>
+      <h4>用量与预算</h4>
+      <div class="big" id="uToday">—</div><div class="sub" id="uTodayD"></div>
+      <div class="sub">本月：<span id="uMonth">—</span></div>
+      <div id="bDaily"></div><div id="bMonthly"></div>
+      <canvas id="uChart" width="240" height="70"></canvas><div class="sub" id="uModels"></div>
+      <div class="row2"><input id="budDaily" type="number" min="0" placeholder="每日预算 tokens"><input id="budMonthly" type="number" min="0" placeholder="每月预算 tokens"><button id="budSave" class="mini" type="button">保存</button></div>
+      <div class="sub">Cindy 不对插件开放真实剩余额度，这里按你设的预算和已记录的用量估算。</div>
+      <h4>项目</h4>
+      <div class="row2"><button id="pPick" class="mini" type="button">选择项目文件夹</button><button id="pScan" class="mini" type="button">重新扫描</button></div>
+      <div id="pBox"></div>
+      <h4>任务</h4>
+      <div id="tList"></div>
+    </aside>
+    <img id="sprite" alt="桌宠" draggable="false">
+  </main>
+  <section id="chat">
+    <div id="log"></div>
+    <form id="form"><input id="input" autocomplete="off" placeholder="和我说点什么，或在头上来回摸一摸…"><button type="submit">发送</button></form>
+    <div id="hint"></div>
+  </section>
+</div>
+<script src="/main-view.js"></script>
+</body>
+</html>

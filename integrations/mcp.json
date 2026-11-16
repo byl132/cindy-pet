@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cindy-pet": {
+      "command": "node",
+      "args": ["C:\\Users\\你的用户名\\AppData\\Local\\Programs\\Cindy桌宠\\resources\\integrations\\deskpet-mcp.cjs"],
+      "env": { "DESKPET_URL": "http://127.0.0.1:47831", "DESKPET_TOKEN": "" }
+    }
+  }
+}

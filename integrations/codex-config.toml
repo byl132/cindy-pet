@@ -1,0 +1,9 @@
+# 加入 ~/.codex/config.toml（路径改成你的实际位置；Windows 路径里的反斜杠要写成 \\）
+
+# 1) 每轮结束桌宠播报（notify 必须写在文件顶层，放在任何 [表] 之前）
+notify = ["node", "C:\\Users\\你的用户名\\AppData\\Local\\Programs\\Cindy桌宠\\resources\\integrations\\deskpet-cli.cjs", "codex-notify"]
+
+# 2) 让 Codex 能主动操控桌宠（MCP）
+[mcp_servers.cindy-pet]
+command = "node"
+args = ["C:\\Users\\你的用户名\\AppData\\Local\\Programs\\Cindy桌宠\\resources\\integrations\\deskpet-mcp.cjs"]

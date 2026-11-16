@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>桌宠设置</title>
+<style>
+body{font-family:"Microsoft YaHei",sans-serif;margin:0;padding:18px 22px;background:#16152a;color:#e8e8f4;font-size:14px}
+h2{margin:18px 0 8px;font-size:15px;color:#9aa6ff;border-bottom:1px solid #33325a;padding-bottom:4px}
+label{display:block;margin:8px 0 3px;color:#b8b8d0;font-size:12px}
+input,select,textarea{width:100%;padding:7px 9px;background:#0f0e20;color:#fff;border:1px solid #3d3c6e;border-radius:6px;font-family:inherit;font-size:13px}
+textarea{min-height:110px;resize:vertical}
+.row{display:flex;gap:10px}.row>div{flex:1}
+button{padding:7px 14px;border:none;border-radius:6px;background:#5b6cff;color:#fff;cursor:pointer;margin:8px 6px 0 0}
+button.gray{background:#3a3960}
+.chk{display:flex;align-items:center;gap:8px;margin:8px 0}.chk input{width:auto}
+.hint{font-size:12px;color:#8d8db0;margin-top:4px;line-height:1.6}
+code{background:#0f0e20;padding:1px 5px;border-radius:4px}
+#msg{color:#7fe3a0;margin-left:8px}
+</style></head><body>
+<h2>对话来源</h2>
+<label>桌宠聊天用哪个模型</label>
+<select id="backend"><option value="api">自己填写的 OpenAI 兼容接口（下方）</option><option value="cindy">Cindy 模型（需在 Cindy 中安装并启用“桌宠联动”插件）</option></select>
+<label>Cindy 中继地址</label><input id="relayUrl" placeholder="http://127.0.0.1:47832">
+<h2>AI 模型接口</h2>
+<div class="row"><div><label>快速预设</label><select id="preset"><option value="">（不改动）</option><option value="openai">OpenAI</option><option value="deepseek">DeepSeek</option><option value="anthropic">Anthropic Claude</option><option value="gemini">Google Gemini</option><option value="ollama">Ollama（本机，无需 Key）</option><option value="lmstudio">LM Studio（本机）</option></select></div>
+<div><label>接口类型</label><select id="apiType"><option value="openai">OpenAI 兼容（/chat/completions）</option><option value="anthropic">Anthropic（/v1/messages）</option><option value="gemini">Google Gemini</option></select></div></div>
+<label>接口地址 Base URL</label><input id="baseUrl" placeholder="https://api.openai.com/v1">
+<div class="row"><div><label>API Key</label><input id="apiKey" type="password"></div><div><label>默认模型</label><input id="model" placeholder="gpt-4o-mini"></div></div>
+<div class="hint">OpenAI 兼容类型可填 OpenAI、DeepSeek、通义、Kimi、OneAPI、Ollama、LM Studio 等；本机地址（localhost）可不填 Key。</div>
+
+<h2>AI 角色（可联动不同模型）</h2>
+<label>当前角色</label><select id="roleSel"></select>
+<label>角色名称</label><input id="roleName">
+<label>该角色使用的模型（留空 = 默认模型）</label><input id="roleModel">
+<label>角色设定 Prompt</label><textarea id="rolePrompt"></textarea>
+<button id="addRole" class="gray">＋ 新角色</button><button id="delRole" class="gray">删除当前角色</button>
+
+<h2>桌宠行为</h2>
+<div class="row"><div><label>你的称呼</label><input id="userName"></div><div><label>关怀提醒间隔（分钟）</label><input id="care" type="number" min="5"></div></div>
+<div class="row"><div><label>大小（0.5 – 1.4，也可在桌宠身上滚轮或右键 → 大小）</label><input id="scale" type="number" step="0.05" min="0.5" max="1.4"></div><div></div></div>
+<div class="chk"><input id="walk" type="checkbox"><span>允许自动在屏幕底部走动</span></div>
+
+<h2>Cindy / 外部联动（本地通知服务）</h2>
+<div class="row"><div><label>端口</label><input id="port" type="number"></div><div><label>令牌 Token（可空）</label><input id="token"></div></div>
+<div class="hint">桌宠监听 <code>127.0.0.1</code>。例如 Cindy 任务完成后让桌宠播报：<br>
+<code>curl -X POST http://127.0.0.1:47831/event -d "{\"type\":\"task_done\",\"title\":\"整理文档\"}"</code><br>
+自定义说话：<code>/say</code>，参数 <code>{"text":"...","mood":"happy|shy|comfort|talk"}</code>。修改端口后保存即生效。</div>
+
+<button id="save">保存</button><span id="msg"></span>
+<script src="settings.js"></script>
+</body></html>

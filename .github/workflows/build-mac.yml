@@ -1,0 +1,22 @@
+name: build-mac
+# 在 GitHub 的 macOS 机器上构建 Cindy 桌宠（Windows 电脑无法本地构建 macOS 应用）。
+# 用法：把本项目推到 GitHub 仓库 → Actions → build-mac → Run workflow → 完成后在运行页底部下载 Artifacts。
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm install
+      - run: bash scripts/build-mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cindy桌宠-mac
+          path: |
+            dist/*.dmg
+            dist/*.zip

@@ -1,0 +1,80 @@
+{
+  "name": "cindy-desktop-pet",
+  "version": "0.5.0",
+  "description": "Q版桌宠：Windows / macOS，跟着 AI 任务工作、用量与项目概览、心情面板、四边趴边、多模型聊天、Cindy 双向同步（设置与动作）、MCP 接入",
+  "author": "Cindy Desk Pet",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --x64",
+    "dist:mac": "bash scripts/build-mac.sh"
+  },
+  "license": "MIT",
+  "build": {
+    "appId": "com.cindy.deskpet",
+    "productName": "Cindy桌宠",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Cindy桌宠"
+    },
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSHumanReadableCopyright": "Cindy 桌宠"
+      }
+    },
+    "protocols": [
+      {
+        "name": "Cindy 桌宠",
+        "schemes": [
+          "cindy-pet"
+        ]
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "integrations",
+        "to": "integrations",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  }
+}
