@@ -4,6 +4,8 @@ const sprite = $('#sprite'), bubble = $('#bubble'), chat = $('#chat'), logEl = $
 const WIN_W = 440, WIN_H = 800, BASE_H = 360;
 
 let cfg = null;
+let readyResolve; const whenReady = new Promise((r) => { readyResolve = r; });   // 素材加载完成前，外部事件（说话/工作状态/动作…）先排队
+const onEvt = (ch, cb) => window.pet.on(ch, async (...a) => { await whenReady; try { cb(...a); } catch (e) { console.error(ch, e); } });
 const sets = {};      // 服装 -> { 姿势名 -> { url, w, h, mask, bbox:{t,b,h} } }
 let imgs = {};        // 当前服装的素材
 let outfit = 'default';
@@ -129,7 +131,7 @@ function setPose(p, ms = 0) {
   busyUntil = ms ? now() + ms : 0;
   pose = p; render();
 }
-function spriteTop() { const r = sprite.getBoundingClientRect(); const im = curImg(); const s = r.height / im.h; return r.top + im.bbox.t * s; }
+function spriteTop() { const im = curImg(); if (!im) return WIN_H; const r = sprite.getBoundingClientRect(); const s = r.height / im.h; return r.top + im.bbox.t * s; }
 function placeBubble() {
   const top = spriteTop();
   if (dock === 'top') {                               // 趴在上边缘：气泡显示在下方，箭头朝上
@@ -432,7 +434,7 @@ setInterval(() => {
 
 // ---------- 与 Cindy 页面同步动作（手动动作 / rua / 睡觉；远端触发的不再回传）----------
 function syncAct(kind, name) { if (cfg && cfg.syncActions !== false) window.pet.sendAct({ kind, name }); }
-window.pet.on('act:remote', (a) => {
+onEvt('act:remote', (a) => {
   if (!a || agentPose || dock || glide) return; lastInteract = now();
   if (a.kind === 'action' && ACTION_INFO[a.name]) doAction(a.name, true);
   else if (a.kind === 'rua') { wake(true); walking = null; setPose('happy', 1800); hearts(3); }
@@ -479,7 +481,7 @@ function onAgent(a) {
     if (k !== lastBudgetWarn) { lastBudgetWarn = k; if (!dock) setPose(imgs.work_sleep ? 'work_sleep' : 'comfort', 6000); say(r.pct <= 0 ? '今天的预算用完啦……累趴了。' : '今天的预算只剩一点点了，省着点用～', 8000); }
   }
 }
-window.pet.on('agent:update', onAgent);
+onEvt('agent:update', onAgent);
 
 // ---------- 重力落地 ----------
 let fallV = 0;
@@ -547,7 +549,7 @@ function careNow() {
 }
 
 // ---------- 事件来源：菜单 / 外部 ----------
-window.pet.on('menu:action', async (a, v) => {
+onEvt('menu:action', async (a, v) => {
   if (a === 'chat') openChat();
   else if (a === 'sleep') { if (sleeping) { wake(); syncAct('wake'); } else { sleepNow(); syncAct('sleep'); } }
   else if (a === 'outfit') { await setOutfit(v, true); }
@@ -560,15 +562,16 @@ window.pet.on('menu:action', async (a, v) => {
   else if (a === 'walk') { cfg.walk = v; if (!v) walking = null; }
   else if (a === 'role') { cfg = await window.pet.getConfig(); history.length = 0; logEl.innerHTML = ''; setPose('talk', 3000); say('我现在是「' + activeRole().name + '」啦。'); }
 });
-window.pet.on('pet:say', ({ text, mood }) => { wake(true); lastInteract = now(); reactMood(mood || 'talk', 6000); say(text, 9000); });
-window.pet.on('config:changed', (c) => { const keep = cfg ? cfg.state : null; cfg = c; if (keep) cfg.state = { ...c.state, mood: keep.mood, energy: keep.energy }; render(); });
-window.pet.on('state:changed', (st) => { if (!cfg) return; cfg.state = { ...st, mood: cfg.state.mood, energy: cfg.state.energy }; });
+onEvt('pet:say', ({ text, mood }) => { wake(true); lastInteract = now(); reactMood(mood || 'talk', 6000); say(text, 9000); });
+onEvt('config:changed', (c) => { const keep = cfg ? cfg.state : null; cfg = c; if (keep) cfg.state = { ...c.state, mood: keep.mood, energy: keep.energy }; render(); });
+onEvt('state:changed', (st) => { if (!cfg) return; cfg.state = { ...st, mood: cfg.state.mood, energy: cfg.state.energy }; });
 
 // ---------- 启动 ----------
 (async function init() {
   cfg = await window.pet.getConfig();
   await setOutfit(cfg.outfit || 'default', false);
   const info = await window.pet.info(); winX = info.bounds.x; winY = info.bounds.y; work = info.work;
+  readyResolve();                                  // 素材与位置都就绪，放行排队中的事件
   window.pet.getAgent().then((a) => { if (a && a.state && a.state !== 'idle') onAgent(a); }).catch(() => {});
   window.pet.ignore(true); ignoring = true;
   if (cfg.dock) dockTo(cfg.dock, false);

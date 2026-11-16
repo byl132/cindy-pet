@@ -56,7 +56,7 @@ V=$(J http://127.0.0.1:47831/ping | grep -o '"visible":[a-z]*'); log "跟随 Cin
 
 # 8) 命令行与 MCP
 node integrations/deskpet-cli.cjs status > "$OUT/cli.txt" 2>&1 && ok "deskpet-cli status：$(head -c 120 "$OUT/cli.txt")" || bad "deskpet-cli status"
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | timeout 8 node integrations/deskpet-mcp.cjs 2>/dev/null > "$OUT/mcp.txt"
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | node integrations/deskpet-mcp.cjs 2>/dev/null > "$OUT/mcp.txt"
 grep -q "pet_say" "$OUT/mcp.txt" && ok "MCP tools/list 正常" || bad "MCP tools/list"
 
 kill $APPPID $DUMMY 2>/dev/null
