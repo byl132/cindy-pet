@@ -3,12 +3,13 @@
   "version": "0.5.1",
   "description": "Q版桌宠：Windows / macOS，跟着 AI 任务工作、用量与项目概览、心情面板、四边趴边、多模型聊天、Cindy 双向同步（设置与动作）、MCP 接入",
   "author": "Cindy Desk Pet",
+  "desktopName": "cindy-desktop-pet.desktop",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis --x64",
     "dist:mac": "bash scripts/build-mac.sh",
-    "dist:linux": "electron-builder --linux AppImage deb --x64"
+    "dist:linux": "electron-builder --linux AppImage deb --x64 --publish never"
   },
   "license": "MIT",
   "build": {
@@ -57,6 +58,7 @@
       }
     },
     "linux": {
+      "syncDesktopName": true,
       "target": ["AppImage", "deb"],
       "category": "Utility",
       "icon": "build/icon.png",
