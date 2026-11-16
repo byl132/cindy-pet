@@ -14,7 +14,8 @@ log "系统: $(. /etc/os-release; echo "$PRETTY_NAME") / $(uname -m)  DISPLAY=${
 J() { curl -s --max-time 4 "$@"; }
 
 # 1) 假的 “cindy” 进程：验证 pgrep -xi，并用来测试“跟随 Cindy”
-cp /bin/sleep /tmp/cindy; /tmp/cindy 3000 & DUMMY=$!; sleep 1
+# 注意：新版 Ubuntu 的 sleep 是多合一程序，改名后会直接退出，所以用 node 的副本当“假 Cindy”
+cp "$(command -v node)" /tmp/cindy; /tmp/cindy -e 'setTimeout(()=>{},3e6)' & DUMMY=$!; sleep 1
 if pgrep -xi cindy >/dev/null; then ok "pgrep -xi cindy 能检测到名为 cindy 的进程"; else bad "pgrep -xi cindy 检测不到"; fi
 
 # 2) 预先写好配置：开启跟随 Cindy
@@ -50,7 +51,7 @@ V=$(J http://127.0.0.1:47831/ping | grep -o '"visible":[a-z]*'); log "跟随 Cin
 kill $DUMMY 2>/dev/null; sleep 24
 V=$(J http://127.0.0.1:47831/ping | grep -o '"visible":[a-z]*'); log "跟随 Cindy（cindy 已退出 24s）: $V"
 [[ "$V" == '"visible":false' ]] && ok "Cindy 退出后桌宠自动隐藏" || bad "Cindy 退出后桌宠没有隐藏"
-/tmp/cindy 3000 & DUMMY=$!; sleep 12
+/tmp/cindy -e 'setTimeout(()=>{},3e6)' & DUMMY=$!; sleep 12
 V=$(J http://127.0.0.1:47831/ping | grep -o '"visible":[a-z]*'); log "跟随 Cindy（cindy 重新出现）: $V"
 [[ "$V" == '"visible":true' ]] && ok "Cindy 重新出现后桌宠恢复显示" || bad "Cindy 重新出现后桌宠没有恢复"
 
