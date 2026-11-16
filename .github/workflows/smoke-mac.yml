@@ -1,0 +1,19 @@
+name: smoke-mac
+# 在 GitHub 的 macOS 机器上真的启动一遍 Cindy 桌宠，检查接口、跟随 Cindy、趴边指令、命令行/MCP，并截屏。
+on: workflow_dispatch
+jobs:
+  smoke:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm install
+      - run: CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac dir --arm64 -c.mac.identity=null
+      - run: codesign --force --deep --sign - dist/mac-arm64/*.app
+      - run: bash scripts/smoke-mac.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-smoke
+          path: smoke-out/

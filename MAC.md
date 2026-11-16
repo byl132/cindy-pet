@@ -25,7 +25,7 @@ npm run dist:mac        # 输出 dist/Cindy桌宠-mac-universal.dmg 和 .zip（�
 **办法 B：用 GitHub Actions（不需要 Mac）**
 1. 把整个项目推到一个 GitHub 仓库（`.github/workflows/build-mac.yml` 已经写好）。
 2. 打开仓库的 Actions → build-mac → Run workflow。
-3. 构建完成后，在运行页面底部的 Artifacts 下载 `Cindy桌宠-mac`。
+3. 构建完成后，在运行页面底部的 Artifacts 下载 `Cindy-mac-dmg`（约 274MB）或 `Cindy-mac-zip`（约 253MB）。两者内容相同：dmg 拖进应用程序，zip 解压后拖进应用程序。已验证在 GitHub 的 macOS 机器上可以构建成功（约 1.5 分钟）。
 
 ## 第一次打开
 应用没有 Apple 开发者证书签名，只做了临时签名，所以 macOS 会拦一下：
