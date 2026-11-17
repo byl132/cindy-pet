@@ -66,4 +66,8 @@ button.mini { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6
 
 #dl { margin-top: 6px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border, #5b6cff); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
 #dl.hidden { display: none; }
-#dl a { margin-left: auto; padding: 4px 12px; border-radius: 999px; background: #5b6cff; color: #fff; text-decoration: none; font-weight: 600; }
+#dl .dlbtns { margin-left: auto; display: flex; gap: 6px; }
+#dl a { padding: 4px 12px; border-radius: 999px; background: #5b6cff; color: #fff; text-decoration: none; font-weight: 600; opacity: .75; }
+#dl a.me { opacity: 1; }
+#dlmore { margin-top: 4px; font-size: 11px; color: var(--text-secondary, #888); }
+#dlmore a { color: inherit; }

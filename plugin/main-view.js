@@ -386,6 +386,7 @@ async function pingDesktop() {
   }
   if (on && S.sync && r.desktop) applyMedia(r.desktop.media, r.desktop.bpm);          // 页面刚打开 / 错过推送时，也能追上桌面版正在听什么
   offlineN = on ? 0 : offlineN + 1;
+  { const p = (navigator.userAgent || '') + ' ' + (navigator.platform || ''); const me = /Mac/i.test(p) ? 'mac' : /Linux|X11/i.test(p) && !/Android/i.test(p) ? 'linux' : 'win'; document.querySelectorAll('#dl a').forEach((e) => e.classList.toggle('me', e.dataset.os === me)); }       // 突出当前系统对应的下载按钮
   $('#dl').classList.toggle('hidden', on || (offlineN < 2 && S.dlSeen));       // 首次打开且没检测到桌面版：马上提示下载；之后连续两次没连上才再提示，避免偶发抖动
   if (!on && !S.dlSeen) { S.dlSeen = true; saveState(); }
   dot.className = 'dot ' + (on ? 'on' : 'off'); dot.title = on ? '桌面版在线' : '未检测到桌面版';

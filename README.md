@@ -55,3 +55,8 @@ curl http://127.0.0.1:47831/ping
 - **更多模型**：设置里一键预设 OpenAI、DeepSeek、Anthropic Claude、Google Gemini、Ollama、LM Studio；本机地址可不填 Key。
 - **与 Cindy 插件双向同步**服装、角色、称呼（以最后修改时间为准，自动对账）。
 - **四边趴边**（上/下/左/右），四套衣服各有素材；拖拽时按方向镜像的“被拎起”姿势；松手留在原地（默认无重力）。
+
+## 下载与发布
+- 安装包都在 GitHub 的 Releases（`releases/latest`），固定文件名：`Cindy-Pet-Setup-win-x64.exe`、`Cindy-Pet-mac-universal.dmg/.zip`、`Cindy-Pet-linux-x86_64.AppImage`、`Cindy-Pet-linux-amd64.deb`、`cindy-desk-pet.cindy`（插件）。
+- 发布新版：Actions → release → Run workflow，填版本号（如 `v0.6.6`），会自动构建四个端并发布。
+- Cindy 里的“桌宠”页面在没检测到桌面版时，会显示按系统区分的下载按钮，指向上面的固定链接。
