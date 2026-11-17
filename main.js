@@ -26,7 +26,8 @@ const OUTFITS = [
 ];
 const ACTIONS = [
   { id: 'sit', name: '坐下' }, { id: 'stretch', name: '伸懒腰' }, { id: 'hug', name: '抱抱黑猫' },
-  { id: 'lie', name: '趴着睡' }, { id: 'cheer', name: '欢呼' }, { id: 'drink', name: '喝热饮' }
+  { id: 'lie', name: '趴着睡' }, { id: 'cheer', name: '欢呼' }, { id: 'drink', name: '喝热饮' },
+  { id: 'music', name: '听音乐' }, { id: 'video', name: '看视频' }
 ];
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -38,7 +39,7 @@ const DEFAULT_CONFIG = {
   affection: 0, outfit: 'default',
   chatBackend: 'api', relayUrl: 'http://127.0.0.1:47832',
   followCindy: false, followProcess: process.platform === 'win32' ? 'Cindy.exe' : (IS_LINUX ? 'cindy' : 'Cindy'),
-  autoPeek: false, gravity: false, dock: null, sharedAt: 0,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
+  autoPeek: false, gravity: false, dock: null, sharedAt: 0, mediaSense: true,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
   state: { mood: 70, energy: 80, firstDay: today(), ruaTotal: 0, chatTotal: 0, focusDone: 0, moodLog: [] },
   reminders: []
 };
@@ -46,6 +47,19 @@ const DEFAULT_CONFIG = {
 let cfgPath, cfg, win, settingsWin, panelWin, server, tray;
 let agentSnap = { state: 'idle' };
 let manualHidden = false, followHidden = false, quitting = false;
+
+// ---------- 感应音乐 / 视频：电脑在放歌就戴耳机听，在放视频就抱着平板看（只读“类型”，不读歌名/标题）----------
+const mediaMod = require('./media.js');
+let mediaState = { kind: null, since: 0 }, mediaWatcher = null;
+function applyMediaSense() {
+  const on = cfg.mediaSense !== false;
+  if (on && !mediaWatcher) {
+    mediaWatcher = mediaMod.start({ getCfg: () => cfg, log: (...a) => console.log('[media]', ...a),
+      onKind: (k) => { mediaState = { kind: k, since: Date.now() }; broadcast('media:update', mediaState); } });
+  } else if (!on && mediaWatcher) {
+    mediaWatcher.stop(); mediaWatcher = null; mediaState = { kind: null, since: Date.now() }; broadcast('media:update', mediaState);
+  }
+}
 
 function loadConfig() {
   cfgPath = path.join(app.getPath('userData'), 'config.json');
@@ -128,7 +142,7 @@ ipcMain.handle('config:get', () => cfg);
 ipcMain.handle('config:set', (_e, patch) => {
   const prev = { o: cfg.outfit, r: cfg.activeRole, n: cfg.userName };
   cfg = { ...cfg, ...patch, api: { ...cfg.api, ...(patch.api || {}) }, state: { ...cfg.state, ...(patch.state || {}) } };
-  saveConfig(); broadcast('config:changed', cfg); startServer(); applyFollow();
+  saveConfig(); broadcast('config:changed', cfg); startServer(); applyFollow(); applyMediaSense();
   if (prev.o !== cfg.outfit || prev.r !== cfg.activeRole || prev.n !== cfg.userName) touchShared('local');
   return cfg;
 });
@@ -139,6 +153,7 @@ ipcMain.handle('state:patch', (_e, patch) => {
 });
 ipcMain.on('affection:add', (_e, n) => { cfg.affection = (cfg.affection || 0) + n; saveConfig(); broadcast('state:changed', cfg.state, cfg.affection); });
 ipcMain.handle('agent:get', () => agentSnap);
+ipcMain.handle('media:get', () => mediaState);
 ipcMain.on('act:send', (_e, a) => {                          // 桌面版 -> Cindy 页面：动作同步（Cindy 没开时静默）
   if (!a || !['action', 'rua', 'sleep', 'wake'].includes(a.kind) || cfg.syncActions === false) return;
   fetch((cfg.relayUrl || 'http://127.0.0.1:47832').replace(/\/+$/, '') + '/act', {
@@ -287,6 +302,7 @@ function buildMenu() {
     { type: 'separator' },
     { label: '跟随 Cindy（Cindy 运行时才显示）', type: 'checkbox', checked: !!cfg.followCindy,
       click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); broadcast('config:changed', cfg); } },
+    { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '隐藏桌宠', click: () => hidePet(true) },
@@ -332,6 +348,7 @@ function updateTray() {
     { label: '面板：专注计时', click: () => openPanel('focus') }, { label: '面板：提醒', click: () => openPanel('remind') },
     { type: 'separator' },
     { label: '跟随 Cindy', type: 'checkbox', checked: !!cfg.followCindy, click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); } },
+    { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
@@ -371,7 +388,7 @@ function startServer() {
   if (server) { try { server.close(); } catch {} server = null; }
   server = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
-    if (req.method === 'GET' && req.url === '/ping') return reply(200, { ok: true, role: activeRole().name, roleId: cfg.activeRole, outfit: cfg.outfit, userName: cfg.userName, at: cfg.sharedAt || 0, mood: cfg.state.mood, energy: cfg.state.energy, agent: agentSnap.state, visible: !!(win && win.isVisible()) });
+    if (req.method === 'GET' && req.url === '/ping') return reply(200, { ok: true, role: activeRole().name, roleId: cfg.activeRole, outfit: cfg.outfit, userName: cfg.userName, at: cfg.sharedAt || 0, mood: cfg.state.mood, energy: cfg.state.energy, agent: agentSnap.state, media: mediaState.kind, visible: !!(win && win.isVisible()) });
     if (req.method === 'GET' && req.url === '/agent') return reply(200, { ok: true, ...agentSnap });
     if (req.method === 'GET' && (req.url === '/' || req.url === '/api')) return reply(200, {
       ok: true, name: 'Cindy 桌宠本地接口', version: app.getVersion(), auth: cfg.notifyToken ? 'X-Token 头或请求体 token' : '无',
@@ -379,7 +396,8 @@ function startServer() {
         'GET /ping': '在线状态、心情、精力、服装',
         'POST /say': '{text, mood: talk|happy|shy|comfort|cheer}',
         'POST /event': '{type: task_done|task_failed, title, source}',
-        'POST /action': '{name: sit|stretch|hug|lie|cheer|drink}',
+        'POST /action': '{name: sit|stretch|hug|lie|cheer|drink|music|video}',
+        'POST /media': '{kind: music|video|none} 手动告知正在听歌/看视频（用于其他播放器或测试；自动感应开启时会被下一次变化覆盖）',
         'POST /outfit': '{id: default|hoodie|gothic|pajama}',
         'POST /dock': '{side: top|bottom|left|right|none}',
         'POST /show · /hide': '显示 / 隐藏桌宠',
@@ -405,6 +423,9 @@ function startServer() {
       } else if (req.url === '/action') {
         if (!ACTIONS.some(a => a.id === j.name)) return reply(400, { ok: false, error: 'unknown action' });
         toPet('menu:action', 'action_quiet', j.name); return reply(200, { ok: true });
+      } else if (req.url === '/media') {
+        const k = j.kind === 'music' || j.kind === 'video' ? j.kind : null;
+        mediaState = { kind: k, since: Date.now(), manual: true }; broadcast('media:update', mediaState); return reply(200, { ok: true, kind: k });
       } else if (req.url === '/act') {                         // 来自 Cindy 页面的动作同步（不再回传）
         if (!['action', 'rua', 'sleep', 'wake'].includes(j.kind)) return reply(400, { ok: false, error: 'bad kind' });
         toPet('act:remote', { kind: j.kind, name: String(j.name || '').slice(0, 20) }); return reply(200, { ok: true });
@@ -470,9 +491,9 @@ else {
   });
   app.whenReady().then(() => {
     if (process.platform === 'darwin' && app.dock) app.dock.hide();          // macOS：不在 Dock 里显示图标，只留菜单栏图标
-    loadConfig(); createWindow(); createTray(); startServer(); applyFollow();
+    loadConfig(); createWindow(); createTray(); startServer(); applyFollow(); applyMediaSense();
     const u = process.argv.find(a => a.startsWith(PROTOCOL + '://')); if (u) setTimeout(() => handleUrl(u), 1500);
   });
 }
 app.on('window-all-closed', (e) => { if (!quitting) e.preventDefault?.(); });
-app.on('before-quit', () => { quitting = true; });
+app.on('before-quit', () => { quitting = true; if (mediaWatcher) { mediaWatcher.stop(); mediaWatcher = null; } });

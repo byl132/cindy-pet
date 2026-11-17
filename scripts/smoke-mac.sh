@@ -34,6 +34,10 @@ R1=$(J -X POST http://127.0.0.1:47831/say -d '{"text":"Mac 冒烟测试：你好
 R2=$(J -X POST http://127.0.0.1:47831/agent -d '{"state":"working","source":"smoke"}'); [[ "$R2" == *'"ok":true'* ]] && ok "POST /agent working" || bad "POST /agent：$R2"
 sleep 1; J http://127.0.0.1:47831/agent | grep -q '"state":"working"' && ok "GET /agent 回读 working" || bad "GET /agent 回读"
 R3=$(J -X POST http://127.0.0.1:47831/dock -d '{"side":"top"}'); [[ "$R3" == *'"ok":true'* ]] && ok "POST /dock top" || bad "POST /dock：$R3"
+R3b=$(J -X POST http://127.0.0.1:47831/media -d '{"kind":"music"}'); sleep 1
+if [[ "$R3b" == *'"ok":true'* ]] && J http://127.0.0.1:47831/ping | grep -q '"media":"music"'; then ok "POST /media music 生效（ping 里 media=music）"; else bad "POST /media：$R3b"; fi
+J -X POST http://127.0.0.1:47831/media -d '{"kind":"video"}' >/dev/null; sleep 1; J -X POST http://127.0.0.1:47831/action -d '{"name":"music"}' | grep -q '"ok":true' && ok "POST /action music" || bad "POST /action music"
+J -X POST http://127.0.0.1:47831/media -d '{"kind":"none"}' >/dev/null
 
 # 5) 窗口 / 渲染进程是否出错
 sleep 6

@@ -10,7 +10,7 @@ const readline = require('readline');
 
 const BASE = new URL(process.env.DESKPET_URL || 'http://127.0.0.1:47831');
 const TOKEN = process.env.DESKPET_TOKEN || '';
-const VERSION = '0.5.2';
+const VERSION = '0.6.0';
 
 function call(method, path, body) {
   return new Promise((resolve) => {
@@ -27,7 +27,7 @@ function call(method, path, body) {
 }
 
 const MOODS = ['talk', 'happy', 'shy', 'comfort', 'cheer'];
-const ACTIONS = ['sit', 'stretch', 'hug', 'lie', 'cheer', 'drink'];
+const ACTIONS = ['sit', 'stretch', 'hug', 'lie', 'cheer', 'drink', 'music', 'video'];
 const OUTFITS = ['default', 'hoodie', 'gothic', 'pajama'];
 const SIDES = ['top', 'bottom', 'left', 'right', 'none'];
 
@@ -38,7 +38,7 @@ const TOOLS = [
   { name: 'pet_task_done', description: '任务完成/失败时让桌宠播报并欢呼或安慰。',
     inputSchema: { type: 'object', properties: { title: { type: 'string', description: '任务名称' }, failed: { type: 'boolean', description: 'true 表示失败' }, source: { type: 'string', description: '来源，如 Claude Code' } }, required: ['title'] },
     run: (a) => call('POST', '/event', { type: a.failed ? 'task_failed' : 'task_done', title: a.title, source: a.source }) },
-  { name: 'pet_action', description: '让桌宠做一个动作：sit 坐下 / stretch 伸懒腰 / hug 抱黑猫 / lie 趴着睡 / cheer 欢呼 / drink 喝热饮。',
+  { name: 'pet_action', description: '让桌宠做一个动作：sit 坐下 / stretch 伸懒腰 / hug 抱黑猫 / lie 趴着睡 / cheer 欢呼 / drink 喝热饮 / music 听音乐 / video 看视频。',
     inputSchema: { type: 'object', properties: { name: { type: 'string', enum: ACTIONS } }, required: ['name'] },
     run: (a) => call('POST', '/action', { name: a.name }) },
   { name: 'pet_outfit', description: '切换桌宠服装：default 针织衫 / hoodie 猫耳卫衣 / gothic 哥特洛丽塔 / pajama 星星睡衣。',

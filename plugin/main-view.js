@@ -7,14 +7,17 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const now = () => performance.now();
 
 const OUTFITS = [['default', '针织衫'], ['hoodie', '猫耳卫衣'], ['gothic', '洛丽塔'], ['pajama', '睡衣']];
-const ACTIONS = [['sit', '坐下'], ['stretch', '伸懒腰'], ['hug', '抱猫'], ['lie', '趴着'], ['cheer', '欢呼'], ['drink', '喝热饮']];
+const ACTIONS = [['sit', '坐下'], ['stretch', '伸懒腰'], ['hug', '抱猫'], ['lie', '趴着'], ['cheer', '欢呼'], ['drink', '喝热饮'], ['music', '听音乐'], ['video', '看视频']];
+const ACTION_ALIAS = { music: 'listen_music', video: 'watch_video' };   // 对外名字 -> 素材名
 const ACTION_INFO = {
   sit: { ms: 9000, lines: ['坐一会儿。', '腿有点累了……'] },
   stretch: { ms: 3500, lines: ['嗯——(伸懒腰)', '哈啊……好困。'] },
   hug: { ms: 6500, lines: ['黑猫不许跑，让我抱一下。', '喵：……(被迫营业)'] },
   lie: { ms: 12000, lines: ['趴一下，就一下。', 'zzz……'] },
   cheer: { ms: 2600, lines: ['耶！', '太好啦！'] },
-  drink: { ms: 6500, lines: ['小口小口……好暖。', '你也要喝点水哦。'] }
+  drink: { ms: 6500, lines: ['小口小口……好暖。', '你也要喝点水哦。'] },
+  listen_music: { ms: 20000, lines: ['耳机戴好，节奏跟上。', '这首……还不错。'] },
+  watch_video: { ms: 20000, lines: ['爆米花准备好了。', '嘘……正精彩呢。'] }
 };
 const POSES = ['idle', 'happy', 'talk', 'comfort', 'sleep', 'shy'];
 const WORK = ['work_type', 'work_read', 'work_think', 'work_wait', 'work_error', 'work_sleep'];
@@ -88,7 +91,7 @@ async function loadOne(o, name, store) {
 async function loadOutfit(o) {
   if (sets[o]) return sets[o];
   const store = {};
-  await Promise.all([...POSES, ...WALK, ...WORK, ...ACTIONS.map((a) => a[0])].map((n) => loadOne(o, n, store)));
+  await Promise.all([...POSES, ...WALK, ...WORK, ...ACTIONS.map((a) => ACTION_ALIAS[a[0]] || a[0])].map((n) => loadOne(o, n, store).catch(() => {})));
   return (sets[o] = store);
 }
 
@@ -134,7 +137,7 @@ async function pushShared() {
 function syncAct(kind, name) { if (S.sync) request({ type: 'act-set', act: { kind, name } }, 8000); }
 function applyAct(a) {
   if (!S.sync || !a || agentPose) return; lastInteract = now();
-  if (a.kind === 'action' && ACTION_INFO[a.name]) doAction(a.name, true);
+  if (a.kind === 'action' && ACTION_INFO[ACTION_ALIAS[a.name] || a.name]) doAction(a.name, true);
   else if (a.kind === 'rua') { wake(true); walking = null; setPose('happy', 1800); hearts(3); }
   else if (a.kind === 'sleep') sleepNow(); else if (a.kind === 'wake') wake(true);
 }
@@ -159,8 +162,9 @@ function addMsg(who, text) {
   const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text; logEl.appendChild(d);
   logEl.scrollTop = logEl.scrollHeight; while (logEl.children.length > 50) logEl.firstChild.remove();
 }
-function react(mood) { if (ACTION_INFO[mood] && imgs[mood]) return doAction(mood, true); setPose(MOOD_POSE[mood] || 'talk', 4500); }
+function react(mood) { const am = ACTION_ALIAS[mood] || mood; if (ACTION_INFO[am] && imgs[am]) return doAction(mood, true); setPose(MOOD_POSE[mood] || 'talk', 4500); }
 function doAction(name, quiet) {
+  name = ACTION_ALIAS[name] || name;
   const info = ACTION_INFO[name]; if (!info) return;
   if (!imgs[name]) { say('这个动作还没准备好。'); return; }
   walking = null; wake(true); setPose(name, info.ms); if (name === 'cheer') hearts(3);

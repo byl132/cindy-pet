@@ -6,7 +6,7 @@
  *   node deskpet-cli.cjs done "整理文档" [来源]      任务完成（欢呼）
  *   node deskpet-cli.cjs fail "构建" [来源]          任务失败（安慰）
  *   node deskpet-cli.cjs agent working|thinking|waiting-approval|waiting-input|done|error|idle [来源]   让桌宠跟着 AI 的工作状态动
- *   node deskpet-cli.cjs action drink | outfit hoodie | dock top | show | hide | status
+ *   node deskpet-cli.cjs action drink | action music | action video | outfit hoodie | dock top | show | hide | status
  *   node deskpet-cli.cjs claude-hook                 作为 Claude Code 钩子（从 stdin 读 JSON）
  *   node deskpet-cli.cjs codex-notify '<json>'       作为 Codex 的 notify 程序
  * 环境变量：DESKPET_URL、DESKPET_TOKEN

@@ -12,6 +12,7 @@ let outfit = 'default';
 const POSE_FILES = ['idle', 'happy', 'talk', 'comfort', 'sleep', 'shy'];
 const WORK_FILES = ['work_type', 'work_read', 'work_think', 'work_wait', 'work_error', 'work_sleep'];
 const ACTION_FILES = ['sit', 'stretch', 'hug', 'lie', 'cheer', 'drink'];
+const MEDIA_FILES = ['listen_music', 'watch_video'];      // 听音乐 / 看视频（缺素材时不报错，只是没有这个动作）
 const WALK_FILES = ['walk1', 'walk2', 'walk3', 'walk4'];
 const PEEK_FILES = ['peek_b_idle', 'peek_b_sleep', 'peek_b_happy', 'peek_s_idle', 'peek_s_sleep', 'peek_s_happy', 'peek_t_idle', 'peek_t_sleep', 'peek_t_happy'];
 const PEEK_K = 0.92;     // 趴边图相对站立图的大小系数
@@ -72,6 +73,7 @@ async function loadOutfit(o) {
   const names = [...POSE_FILES, ...WALK_FILES, ...ACTION_FILES, ...WORK_FILES, 'held1', 'held2'];
   await Promise.all(names.map(n => loadImage(o, n, store)));
   await Promise.all(PEEK_FILES.map(async n => { try { await loadImage(o, n, store); } catch { await loadImage('default', n, store); } }));
+  await Promise.all(MEDIA_FILES.map(async n => { try { await loadImage(o, n, store); } catch {} }));
   sets[o] = store; return store;
 }
 async function setOutfit(o, announce) {
@@ -327,9 +329,13 @@ const ACTION_INFO = {
   hug:     { ms: 6500, lines: ['黑猫不许跑，让我抱一下。', '喵：……(被迫营业)'] },
   lie:     { ms: 12000, lines: ['趴一下，就一下。', 'zzz……'] },
   cheer:   { ms: 2600, lines: ['耶！', '太好啦！'] },
-  drink:   { ms: 6500, lines: ['小口小口……好暖。', '你也要喝点水哦。'] }
+  drink:   { ms: 6500, lines: ['小口小口……好暖。', '你也要喝点水哦。'] },
+  listen_music: { ms: 20000, lines: ['耳机戴好，节奏跟上。', '这首……还不错。'] },
+  watch_video:  { ms: 20000, lines: ['爆米花准备好了。', '嘘……正精彩呢。'] }
 };
+const ACTION_ALIAS = { music: 'listen_music', video: 'watch_video' };
 function doAction(name, quiet) {
+  name = ACTION_ALIAS[name] || name;
   const info = ACTION_INFO[name]; if (!info || !imgs[name]) { if (!imgs[name]) say('这套衣服还没有这个动作，换回默认针织衫试试～'); return; }
   walking = null; wake(true);
   if (dock || glide) { if (!glide) undock(true, () => doAction(name, quiet)); return; }   // 趴着时先走回桌面再做动作，不再瞬移
@@ -436,14 +442,38 @@ setInterval(() => {
 function syncAct(kind, name) { if (cfg && cfg.syncActions !== false) window.pet.sendAct({ kind, name }); }
 onEvt('act:remote', (a) => {
   if (!a || agentPose || dock || glide) return; lastInteract = now();
-  if (a.kind === 'action' && ACTION_INFO[a.name]) doAction(a.name, true);
+  if (a.kind === 'action' && ACTION_INFO[ACTION_ALIAS[a.name] || a.name]) doAction(a.name, true);
   else if (a.kind === 'rua') { wake(true); walking = null; setPose('happy', 1800); hearts(3); }
   else if (a.kind === 'sleep') sleepNow(); else if (a.kind === 'wake') wake(true);
 });
 
 // ---------- 睡觉 ----------
 let agentPose = null;                                  // Cindy / 其他 AI 正在干活时桌宠保持的工作姿势
-const restPose = () => agentPose || (sleeping ? 'sleep' : 'idle');
+const restPose = () => agentPose || mediaPose || (sleeping ? 'sleep' : 'idle');
+
+// ---------- 感应音乐 / 视频（主进程检测系统里正在播放的内容，只告诉我们“音乐”还是“视频”）----------
+const MEDIA_POSE = { music: 'listen_music', video: 'watch_video' };
+const MEDIA_LINES = { music: ['在放歌呀……我也悄悄听一会儿。', '耳机戴好，节奏跟上。'], video: ['看视频吗？我也搬个小板凳。', '爆米花准备好了，一起看～'] };
+let mediaKind = null, mediaPose = null, lastMediaSay = 0;
+const mediaBusy = () => !!(agentPose || dock || glide || dragging || down || chatOpen || sleeping);
+function syncMediaPose() {                                       // 让当前姿势和感应结果一致；忙的时候不打断，空下来由主循环补上
+  if (mediaBusy() || walking || tempPose) return;
+  if (mediaPose && pose !== mediaPose) setPose(mediaPose);
+  else if (!mediaPose && (pose === 'listen_music' || pose === 'watch_video')) setPose(restPose());
+}
+function applyMedia(kind, announce) {
+  mediaKind = kind || null;
+  const want = mediaKind && cfg && cfg.mediaSense !== false && imgs[MEDIA_POSE[mediaKind]] ? MEDIA_POSE[mediaKind] : null;
+  if (want === mediaPose) return;
+  mediaPose = want;
+  if (want) {
+    bump(1, 0);
+    if (announce && now() - lastMediaSay > 60000 && !mediaBusy()) { lastMediaSay = now(); say(pick(MEDIA_LINES[mediaKind]), 4000); }
+    if (!mediaBusy()) walking = null;
+  }
+  syncMediaPose();
+}
+onEvt('media:update', (m) => applyMedia(m && m.kind, true));
 function sleepNow() { sleeping = true; walking = null; setPose('sleep'); }
 function wake(silent) { if (!sleeping) return; sleeping = false; setPose(restPose()); if (!silent) say(pick(LINES.wake)); }
 
@@ -473,7 +503,7 @@ function onAgent(a) {
   } else {
     agentPose = null;
     if (a.state === 'done' && prev !== 'done') { bump(2, 0); if (!dock) doAction('cheer', true); say2(src + '这一轮做完啦！' + (a.usage ? '今天累计 ' + fmtN(a.usage.today.total) + ' tokens。' : ''), 6000); }
-    else if (prev !== a.state && !dock) setPose(sleeping ? 'sleep' : 'idle');
+    else if (prev !== a.state && !dock) setPose(restPose());
   }
   const r = a.usage && a.usage.remaining && a.usage.remaining.daily;
   if (r && r.pct <= 10) {
@@ -516,6 +546,7 @@ function loop() {
     window.pet.setPos(winX, winY);
     walkAnimT += dt; if (walkAnimT > 150) { walkAnimT = 0; walkFrame++; pose = 'walk'; render(); }
   }
+  if (mediaPose || pose === 'listen_music' || pose === 'watch_video') syncMediaPose();
   // 自主行为
   if (dock && dockAuto && t > dockUntil && !chatOpen && !down) undock(false);
   const free = !agentPose && !dock && !dragging && !down && !chatOpen && !walking && !tempPose && !sleeping && pose === 'idle';
@@ -529,7 +560,7 @@ function loop() {
     else { setPose(Math.random() < .3 ? 'talk' : 'idle', 1800); nextDecision = t + rand(6000, 14000); }
   }
   // 久不互动 -> 睡觉
-  if (!agentPose && !sleeping && !chatOpen && !walking && !dragging && t - lastInteract > (dock ? 2 : 5) * 60 * 1000) { sleepNow(); say('……zzz', 2500); }
+  if (!agentPose && !mediaPose && !sleeping && !chatOpen && !walking && !dragging && t - lastInteract > (dock ? 2 : 5) * 60 * 1000) { sleepNow(); say('……zzz', 2500); }
   // 关怀
   if (t - lastCare > (cfg.careIntervalMin || 45) * 60 * 1000 && !chatOpen && !sleeping) { lastCare = t; careNow(); }
 }
@@ -573,6 +604,7 @@ onEvt('state:changed', (st) => { if (!cfg) return; cfg.state = { ...st, mood: cf
   const info = await window.pet.info(); winX = info.bounds.x; winY = info.bounds.y; work = info.work;
   readyResolve();                                  // 素材与位置都就绪，放行排队中的事件
   window.pet.getAgent().then((a) => { if (a && a.state && a.state !== 'idle') onAgent(a); }).catch(() => {});
+  window.pet.getMedia().then((m) => { if (m && m.kind) applyMedia(m.kind, false); }).catch(() => {});
   window.pet.ignore(true); ignoring = true;
   if (cfg.dock) dockTo(cfg.dock, false);
   setTimeout(() => { setPose('talk', 4500); say(timeGreeting(), 6000); }, 600);

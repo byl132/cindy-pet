@@ -9,7 +9,7 @@ const done = new Map();            // reqId -> 结果（重发时直接回放，
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MOODS = ['talk', 'happy', 'shy', 'comfort', 'cheer'];
 const OUTFITS = ['default', 'hoodie', 'gothic', 'pajama'];
-const ACTIONS = ['sit', 'stretch', 'hug', 'lie', 'cheer', 'drink'];
+const ACTIONS = ['sit', 'stretch', 'hug', 'lie', 'cheer', 'drink', 'music', 'video'];
 
 function remember(reqId, result) {
   done.set(reqId, result);
@@ -253,7 +253,7 @@ cindy.onHostMessage(async function (msg) {
       return ok(msg, { view: true, desktop: !!d.ok });
     }
     if (msg.tool === 'pet_action') {
-      if (!ACTIONS.includes(a.name)) return fail(msg, 'BAD_ACTION', 'name 必须是 sit / stretch / hug / lie / cheer / drink 之一。');
+      if (!ACTIONS.includes(a.name)) return fail(msg, 'BAD_ACTION', 'name 必须是 sit / stretch / hug / lie / cheer / drink / music / video 之一。');
       const target = ['both', 'view', 'desktop'].includes(a.target) ? a.target : 'both';
       const res = { view: false, desktop: false };
       if (target !== 'desktop') { bc.postMessage({ type: 'say', text: '', mood: a.name }); res.view = true; }

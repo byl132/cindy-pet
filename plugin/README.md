@@ -7,7 +7,7 @@ Open the "桌宠 / Desk Pet" page: the pet walks around, can be petted (rub its 
 
 ## Agent tools
 - `pet_say` – announce task results, encourage, remind to rest
-- `pet_action` – sit / stretch / hug the cat / lie down / cheer / drink
+- `pet_action` – sit / stretch / hug the cat / lie down / cheer / drink / listen to music / watch a video
 - `pet_outfit` – switch outfit
 - `pet_dock` – make the desktop pet peek over the top / bottom / left / right screen edge
 - `pet_show` – show or hide the desktop edition

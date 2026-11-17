@@ -5,7 +5,7 @@
   "name": "桌宠联动",
   "description": "Q版桌宠：在 Cindy 里陪你聊天、被 rua、换装；跟着 Cindy 的任务活动工作/思考/等你确认，统计 token 用量并按预算估算剩余，概览你选的项目文件夹和任务状态；并与桌面版（Windows / macOS）双向同步设置与动作。",
   "whenToUse": "想让桌宠说话或播报、做动作、给用户鼓励和情绪陪伴、任务完成时提醒、切换桌宠服装、显示或隐藏桌面版桌宠、查看 AI 当前在忙什么、今日用量与剩余预算、项目概览与任务状态时找我",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "icon": "assets/icon.png",
   "readme": {
     "en": "README.md",
@@ -87,9 +87,11 @@
               "hug",
               "lie",
               "cheer",
-              "drink"
+              "drink",
+              "music",
+              "video"
             ],
-            "description": "sit 坐下、stretch 伸懒腰、hug 抱黑猫、lie 趴着睡、cheer 欢呼、drink 喝热饮"
+            "description": "sit 坐下、stretch 伸懒腰、hug 抱黑猫、lie 趴着睡、cheer 欢呼、drink 喝热饮、music 戴耳机听音乐、video 抱平板看视频"
           },
           "target": {
             "type": "string",

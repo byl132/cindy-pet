@@ -30,7 +30,7 @@
 node deskpet-cli.cjs say "你好" happy
 node deskpet-cli.cjs done "整理文档" 我的脚本
 node deskpet-cli.cjs fail "构建" CI
-node deskpet-cli.cjs action drink      # sit stretch hug lie cheer drink
+node deskpet-cli.cjs action drink      # sit stretch hug lie cheer drink music video
 node deskpet-cli.cjs outfit hoodie     # default hoodie gothic pajama
 node deskpet-cli.cjs dock top          # top bottom left right none
 node deskpet-cli.cjs agent working 我的脚本    # 让桌宠进入工作姿势；done / error / waiting-input / idle 同理
@@ -44,7 +44,8 @@ GET  http://127.0.0.1:47831/api              接口说明
 GET  http://127.0.0.1:47831/ping             在线、心情、精力、服装
 POST /say     {"text":"你好","mood":"happy"}          mood: talk happy shy comfort cheer
 POST /event   {"type":"task_done","title":"构建","source":"CI"}   type: task_done | task_failed
-POST /action  {"name":"drink"}
+POST /action  {"name":"drink"}      // name: sit|stretch|hug|lie|cheer|drink|music|video
+POST /media   {"kind":"music"}      // 告知桌宠正在听歌/看视频：music | video | none（桌面版也会自动感应，见根目录 MEDIA.md）
 POST /outfit  {"id":"hoodie"}
 POST /dock    {"side":"top"}
 POST /agent    {"state":"working","source":"我的脚本"}   state: idle working thinking waiting-approval waiting-input done error
