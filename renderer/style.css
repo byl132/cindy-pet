@@ -56,3 +56,19 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: transparen
   82%  { opacity: .9; transform: translate(calc(var(--dx, 20px) * .6), -108px) rotate(calc(var(--r0, 10deg) * -.5)) scale(.95); }
   100% { opacity: 0; transform: translate(calc(var(--dx, 20px) * -.2), -135px) rotate(var(--r0, 10deg)) scale(.85); }
 }
+
+#ask { position: absolute; left: 50%; transform: translateX(-50%); width: 360px; max-height: 470px; overflow: auto; padding: 12px 14px;
+  background: #fffaf3; color: #2a2740; border: 2px solid #5b6cff; border-radius: 16px; font-size: 13px; line-height: 1.5; box-shadow: 0 3px 0 rgba(42,39,64,.25); animation: pop .18s ease-out; }
+#ask .a-who { font-weight: 700; color: #5b6cff; margin-bottom: 4px; }
+#ask .a-q { font-weight: 600; margin: 6px 0 4px; }
+#ask .a-body { white-space: pre-wrap; word-break: break-all; max-height: 150px; overflow: auto; background: rgba(42,39,64,.06); border-radius: 8px; padding: 6px 8px; margin: 4px 0; font-family: Consolas, monospace; font-size: 12px; }
+#ask .a-opts { display: flex; flex-direction: column; gap: 4px; }
+#ask button { text-align: left; cursor: pointer; font: inherit; color: inherit; background: #fff; border: 1.5px solid #2a2740; border-radius: 10px; padding: 5px 9px; }
+#ask button:hover { background: #eef0ff; }
+#ask button.on { background: #5b6cff; color: #fff; border-color: #5b6cff; }
+#ask button small { display: block; opacity: .7; font-size: 11px; }
+#ask .a-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+#ask .a-row button { text-align: center; }
+#ask .a-go { background: #5b6cff; color: #fff; border-color: #5b6cff; }
+#ask .a-go:disabled { opacity: .45; cursor: default; }
+#ask .a-n { font-size: 11px; opacity: .65; margin-top: 4px; }

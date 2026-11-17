@@ -208,6 +208,52 @@ bc.onmessage = async ({ data }) => {
   bc.postMessage({ type: 'result', reqId, ...result });
 };
 
+
+// ================= 伙伴的提问 / 确认 -> 桌面版（可在桌宠上看内容并作答） =================
+// 只有“伙伴”的请求，Cindy 才向插件开放内容与作答接口；普通对话里的提问只给“有请求”的信号，没有内容，也不能代答。
+const askCache = new Map();         // ref -> interaction 详情
+let askTimer = 0, askLast = '', askWatching = false;
+const hasCompanions = () => typeof cindy.companions?.list === 'function';
+function askKey(c, r) { return c.id + '|' + r.ref; }
+async function syncAsks() {
+  if (!hasCompanions()) return;
+  let list; try { list = (await cindy.companions.list()).companions || []; } catch (e) { return; }
+  const items = []; const live = new Set();
+  for (const c of list) {
+    for (const r of (c.interactions || []).slice(0, 3)) {
+      const k = askKey(c, r); live.add(k);
+      let it = askCache.get(k);
+      if (!it && r.kind !== 'other') { try { it = (await cindy.companions.interaction({ companionId: c.id, interactionRef: r.ref })).interaction; if (it) askCache.set(k, it); } catch (e) {} }
+      const base = { ref: r.ref, companionId: c.id, who: String(c.name || '伙伴').slice(0, 20), kind: r.kind, title: String(r.title || '').slice(0, 120) };
+      if (it && it.kind === 'question') items.push({ ...base, questions: (it.questions || []).slice(0, 4).map((q) => ({ question: String(q.question || '').slice(0, 300), header: String(q.header || '').slice(0, 30), multiSelect: !!q.multiSelect,
+        options: (q.options || []).slice(0, 8).map((o) => ({ label: String(o.label || '').slice(0, 80), description: String(o.description || '').slice(0, 160) })) })) });
+      else if (it && it.kind === 'permission') items.push({ ...base, tool: String(it.tool || ''), body: String(it.preview || '').slice(0, 1500), allowHere: !!it.allowHere });
+      else if (it && it.kind === 'plan') items.push({ ...base, body: String(it.plan || '').slice(0, 1500), allowHere: !!it.allowHere });
+      else items.push({ ...base, kind: 'other' });
+    }
+  }
+  for (const k of [...askCache.keys()]) if (!live.has(k)) askCache.delete(k);
+  const sig = JSON.stringify(items); if (sig === askLast) return; askLast = sig;
+  cindy.node.request({ method: 'desk/ask', params: { items }, timeoutMs: 4000 }).catch(() => { askLast = ''; });
+}
+function scheduleAsks(ms) { clearTimeout(askTimer); askTimer = setTimeout(syncAsks, ms || 400); }
+async function startAskWatch() {
+  if (askWatching || !hasCompanions()) return; askWatching = true;
+  try { await cindy.companions.watch(); } catch (e) { /* 没授权或旧版：下面的定时刷新仍会尝试 */ }
+  setInterval(syncAsks, 15000); syncAsks();
+}
+async function handleAnswer(a) {
+  if (!a || !hasCompanions()) return;
+  try {
+    if (a.open) await cindy.companions.open({ companionId: a.companionId, interactionRef: a.ref });
+    else await cindy.companions.answer({ companionId: a.companionId, interactionRef: a.ref, answer: a.answer });
+  } catch (e) {
+    const code = (e && (e.code || e.message)) || '';
+    if (/ALLOW_IN_CINDY/.test(String(code))) { try { await cindy.companions.open({ companionId: a.companionId, interactionRef: a.ref }); } catch {} }
+  }
+  askLast = ''; scheduleAsks(300);
+}
+
 // ================= 桌面版 → Cindy 模型 的中继 =================
 let relayStarted = false;
 async function relayLoop() {
@@ -219,6 +265,7 @@ async function relayLoop() {
       const job = r.result;
       if (!r.result) { await sleep(300); continue; }   // 空轮询：稍等再来，避免宿主异常时空转占满 CPU
       if (job && job.event === 'state') { bc.postMessage({ type: 'state', state: job.state }); continue; }   // 桌面版改了设置 -> 通知页面
+      if (job && job.event === 'answer') { await handleAnswer(job.answer); continue; }                          // 桌宠上点了选项 / 允许 / 拒绝
       if (job && job.event === 'act') { bc.postMessage({ type: 'act', act: job.act }); continue; }
       if (job && job.event === 'media') { bc.postMessage({ type: 'media', media: job.media }); continue; }          // 桌面版在听歌/看视频 -> 页面里的桌宠也跟着          // 桌面版做了动作 -> 页面里的桌宠也做
       if (!job || !job.id) continue;
@@ -228,12 +275,14 @@ async function relayLoop() {
   }
 }
 relayLoop();
+startAskWatch();
 
 // ================= Agent 工具 / 事件入口 =================
 function fail(msg, code, text) { cindy.send({ type: 'tool-result', callId: msg.callId, ok: false, errorCode: code, message: text }); }
 const ok = (msg, result) => cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result });
 
 cindy.onHostMessage(async function (msg) {
+  if (msg.type === 'companions-changed') { scheduleAsks(); return; }
   if (msg.type === 'event') { try { onEvent(msg); } catch (e) {} return; }
   if (msg.type !== 'tool-call') return;
   const a = msg.args || {};

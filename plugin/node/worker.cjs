@@ -27,7 +27,7 @@ function deliver() {
 const server = http.createServer((req, res) => {
   const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
   if (req.method === 'GET' && req.url === '/ping') return send(200, { ok: true, polling: !!poller });
-  if (req.method !== 'POST' || (req.url !== '/chat' && req.url !== '/state' && req.url !== '/act' && req.url !== '/media')) return send(404, { ok: false, error: 'not found' });
+  if (req.method !== 'POST' || (req.url !== '/chat' && req.url !== '/state' && req.url !== '/act' && req.url !== '/media' && req.url !== '/answer')) return send(404, { ok: false, error: 'not found' });
   // 自定义头会让浏览器页面的跨站请求触发预检而被拦下，避免网页偷偷消耗你的模型额度
   if (req.headers['x-desk-pet'] !== '1') return send(403, { ok: false, error: 'forbidden' });
   if (req.url === '/media') {                       // 桌面版 -> Cindy 页面：正在听歌 / 看视频（以及节拍速度）
@@ -37,6 +37,16 @@ const server = http.createServer((req, res) => {
       const kind = j.kind === 'music' || j.kind === 'video' ? j.kind : null;
       for (let i = queue.length - 1; i >= 0; i--) if (queue[i].event === 'media') queue.splice(i, 1);     // 只保留最新的一条
       queue.push({ event: 'media', media: { kind, bpm: Math.max(0, Math.min(240, +j.bpm || 0)), real: !!j.real, at: Date.now() } }); deliver();
+      send(200, { ok: true });
+    });
+    return;
+  }
+  if (req.url === '/answer') {                      // 桌面版 -> Cindy：在桌宠上回答了伙伴的提问 / 确认
+    let b = ''; req.on('data', (c) => { b += c; if (b.length > 8192) req.destroy(); });
+    req.on('end', () => {
+      let j; try { j = JSON.parse(b || '{}'); } catch { return send(400, { ok: false, error: 'bad json' }); }
+      if (!j.ref || !j.companionId) return send(400, { ok: false, error: 'ref/companionId required' });
+      queue.push({ event: 'answer', answer: { ref: String(j.ref), companionId: String(j.companionId), open: !!j.open, answer: j.answer || null } }); deliver();
       send(200, { ok: true });
     });
     return;
@@ -112,6 +122,7 @@ const methods = {
     return require('./scan.cjs').scan(dir);
   },
   'desk/agent': async (p) => deskRequest('POST', '/agent', p.payload || {}),   // 把 Cindy 的工作状态推给桌面版
+  'desk/ask': async (p) => deskRequest('POST', '/ask', { items: Array.isArray(p.items) ? p.items : [] }),   // 伙伴的提问 / 确认 -> 桌面版气泡
   'act/send': async (p) => deskRequest('POST', '/act', p.act || {}),                // Cindy 页面 -> 桌面版
   'state/get': async () => shared,
   'state/set': async (p) => {                       // Cindy 页面 -> 桌面版

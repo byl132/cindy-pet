@@ -411,6 +411,15 @@ function applyFollow() {
 }
 
 // ---------- 本地接口（Cindy / 其他程序联动）----------
+let askItems = [];
+ipcMain.handle('ask:answer', async (_e, p) => {            // 桌宠上的回答 -> 转给 Cindy 插件（插件再交给伙伴）
+  try {
+    const r = await fetch((cfg.relayUrl || 'http://127.0.0.1:47832').replace(/\/+$/, '') + '/answer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Desk-Pet': '1' }, body: JSON.stringify(p || {}), signal: AbortSignal.timeout(4000) });
+    return { ok: r.ok };
+  } catch (e) { return { ok: false, error: '没连上 Cindy 插件（请保持 Cindy 的“桌宠”页面打开）' }; }
+});
+ipcMain.handle('ask:get', () => askItems);
 function startServer() {
   if (server) { try { server.close(); } catch {} server = null; }
   server = http.createServer((req, res) => {
@@ -427,6 +436,7 @@ function startServer() {
         'POST /media': '{kind: music|video|none} 手动告知正在听歌/看视频（用于其他播放器或测试；自动感应开启时会被下一次变化覆盖）',
         'POST /outfit': '{id: default|hoodie|gothic|pajama}',
         'POST /dock': '{side: top|bottom|left|right|none}',
+        'POST /ask': '{items:[{ref,companionId,who,kind,questions|body,allowHere}]} 伙伴的提问/确认气泡（来自 Cindy 插件）',
         'POST /show · /hide': '显示 / 隐藏桌宠',
         'POST /state': '{outfit, role, userName, at} 设置同步（供 Cindy 插件使用）',
         'POST /agent': '{state: idle|working|thinking|waiting-approval|waiting-input|done|error, source} 让桌宠跟着 AI 的工作状态动',
@@ -437,7 +447,7 @@ function startServer() {
     });
     if (req.method !== 'POST') return reply(404, { ok: false });
     let body = '';
-    req.on('data', c => { body += c; if (body.length > 20000) req.destroy(); });
+    req.on('data', c => { body += c; if (body.length > 60000) req.destroy(); });
     req.on('end', () => {
       let j; try { j = JSON.parse(body || '{}'); } catch { return reply(400, { ok: false, error: 'bad json' }); }
       if (cfg.notifyToken && (j.token !== cfg.notifyToken && req.headers['x-token'] !== cfg.notifyToken)) return reply(401, { ok: false, error: 'bad token' });
@@ -473,6 +483,11 @@ function startServer() {
         // 不再因为 AI 开始工作而让隐藏的桌宠突然出现（需要的话用“显示桌宠”或跟随 Cindy）
         broadcast('agent:update', agentSnap); updateTray();
         return reply(200, { ok: true });
+      } else if (req.url === '/ask') {                        // 来自 Cindy 插件：伙伴的提问 / 确认（桌宠上弹出，可直接作答）
+        const items = Array.isArray(j.items) ? j.items.slice(0, 3) : [];
+        askItems = items; toPet('ask:update', items);
+        if (items.length && win && !win.isVisible() && !manualHidden) showPet();
+        return reply(200, { ok: true, count: items.length });
       } else if (req.url === '/state') {                      // 来自 Cindy 插件页面的设置同步
         const at = +j.at || Date.now();
         if (at < (cfg.sharedAt || 0)) return reply(200, { ok: true, ignored: true });

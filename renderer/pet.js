@@ -126,7 +126,7 @@ function render() {
   sprite.classList.toggle('dock-t', dock === 'top');
   sprite.classList.toggle('dock-l', dock === 'left');
   sprite.classList.toggle('dock-r', dock === 'right');
-  placeBubble(); if (chatOpen) placeChat();
+  placeBubble(); if (chatOpen) placeChat(); if (typeof placeAsk === 'function') placeAsk();
 }
 function setPose(p, ms = 0) {
   tempPose = ms ? p : null;
@@ -657,6 +657,71 @@ function careNow() {
   say(line, 8000);
 }
 
+// ---------- 伙伴的提问 / 确认：在桌宠上弹出，带内容和选项，可直接点选 ----------
+const askEl = $('#ask'); let askItems = [], askSig = '', askSel = {};
+function placeAsk() {
+  if (askEl.classList.contains('hidden')) return;
+  const top = spriteTop();
+  if (dock === 'top') { const r = sprite.getBoundingClientRect(); askEl.style.bottom = 'auto'; askEl.style.top = (r.bottom + 16) + 'px'; }
+  else { askEl.style.top = 'auto'; askEl.style.bottom = Math.max(8, WIN_H - top + 14) + 'px'; }
+  askEl.style.maxHeight = Math.max(160, Math.min(470, (dock === 'top' ? WIN_H - sprite.getBoundingClientRect().bottom - 24 : top - 24))) + 'px';
+}
+function askSend(it, payload) {
+  askEl.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+  window.pet.askAnswer({ ref: it.ref, companionId: it.companionId, ...payload }).then((r) => {
+    if (r && r.ok) { askItems = askItems.filter((x) => x !== it); askSig = ''; drawAsk(); setPose('happy', 1500); }
+    else { say((r && r.error) || '没发出去，去 Cindy 里回答吧。', 5000); drawAsk(true); }
+  });
+}
+function mk(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function drawAsk(force) {
+  const sig = JSON.stringify(askItems);
+  if (!force && sig === askSig) return; askSig = sig;
+  askEl.textContent = '';
+  if (!askItems.length) { askEl.classList.add('hidden'); askSel = {}; return; }
+  const it = askItems[0];
+  askEl.classList.remove('hidden'); bubble.classList.add('hidden');
+  walking = null; if (sleeping) wake(true); lastInteract = now();
+  const k = it.companionId + '|' + it.ref; if (!askSel[k]) askSel = { [k]: it.questions ? it.questions.map(() => []) : [] };
+  askEl.appendChild(mk('div', 'a-who', '「' + it.who + '」' + (it.kind === 'question' ? '想问你：' : it.kind === 'plan' ? '请你审阅计划：' : it.kind === 'permission' ? '请你确认：' : '需要你处理：')));
+  const toCindy = () => { const b = mk('button', '', '去 Cindy 里处理'); b.onclick = () => askSend(it, { open: true }); return b; };
+  if (it.kind === 'question' && it.questions && it.questions.length) {
+    const sel = askSel[k]; const quick = it.questions.length === 1 && !it.questions[0].multiSelect;
+    it.questions.forEach((q, qi) => {
+      askEl.appendChild(mk('div', 'a-q', (q.header ? '【' + q.header + '】' : '') + q.question));
+      const box = mk('div', 'a-opts');
+      q.options.forEach((o) => {
+        const b = mk('button', sel[qi].includes(o.label) ? 'on' : '', o.label); if (o.description) b.appendChild(mk('small', '', o.description));
+        b.onclick = () => {
+          if (quick) return askSend(it, { answer: { kind: 'question', answers: [{ choices: [o.label] }] } });
+          const cur = sel[qi]; const i = cur.indexOf(o.label);
+          if (i >= 0) cur.splice(i, 1); else if (q.multiSelect) cur.push(o.label); else { cur.length = 0; cur.push(o.label); }
+          drawAsk(true);
+        };
+        box.appendChild(b);
+      });
+      askEl.appendChild(box);
+    });
+    const row = mk('div', 'a-row');
+    if (!quick) { const go = mk('button', 'a-go', '提交'); go.disabled = !sel.every((c) => c.length); go.onclick = () => askSend(it, { answer: { kind: 'question', answers: sel.map((c) => ({ choices: c.slice() })) } }); row.appendChild(go); }
+    row.appendChild(toCindy()); askEl.appendChild(row);
+  } else if (it.kind === 'permission' || it.kind === 'plan') {
+    if (it.title || it.tool) askEl.appendChild(mk('div', 'a-q', it.tool || it.title));
+    if (it.body) askEl.appendChild(mk('div', 'a-body', it.body));
+    const row = mk('div', 'a-row');
+    if (it.allowHere) { const ok = mk('button', 'a-go', '允许'); ok.onclick = () => askSend(it, { answer: { kind: it.kind, decision: 'allow' } }); row.appendChild(ok); }
+    const no = mk('button', '', '拒绝'); no.onclick = () => askSend(it, { answer: { kind: it.kind, decision: 'deny' } }); row.appendChild(no);
+    row.appendChild(toCindy()); askEl.appendChild(row);
+    askEl.appendChild(mk('div', 'a-n', it.allowHere ? '点“允许”后 Cindy 会再弹一个确认框，在那里确认才生效。' : '这条请求内容太长或类型特殊，只能在 Cindy 里允许。'));
+  } else {
+    askEl.appendChild(mk('div', 'a-q', it.title || '有一个请求在等你'));
+    const row = mk('div', 'a-row'); row.appendChild(toCindy()); askEl.appendChild(row);
+  }
+  if (askItems.length > 1) askEl.appendChild(mk('div', 'a-n', '还有 ' + (askItems.length - 1) + ' 个请求在等你'));
+  placeAsk();
+}
+onEvt('ask:update', (items) => { askItems = Array.isArray(items) ? items : []; drawAsk(); });
+
 // ---------- 事件来源：菜单 / 外部 ----------
 onEvt('menu:action', async (a, v) => {
   if (a === 'chat') openChat();
@@ -684,6 +749,7 @@ onEvt('state:changed', (st) => { if (!cfg) return; cfg.state = { ...st, mood: cf
   window.pet.getAgent().then((a) => { if (a && a.state && a.state !== 'idle') onAgent(a); }).catch(() => {});
   window.pet.getMedia().then((m) => { if (m && m.kind) applyMedia(m.kind, false); }).catch(() => {});
   window.pet.ignore(true); ignoring = true;
+  window.pet.getAsks().then((a) => { askItems = a || []; drawAsk(); }).catch(() => {});
   if (cfg.dock) dockTo(cfg.dock, false);
   setTimeout(() => { setPose('talk', 4500); say(timeGreeting(), 6000); }, 600);
   setInterval(loop, 16);
