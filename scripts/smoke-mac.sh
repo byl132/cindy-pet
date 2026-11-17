@@ -34,6 +34,7 @@ R1=$(J -X POST http://127.0.0.1:47831/say -d '{"text":"Mac 冒烟测试：你好
 R2=$(J -X POST http://127.0.0.1:47831/agent -d '{"state":"working","source":"smoke"}'); [[ "$R2" == *'"ok":true'* ]] && ok "POST /agent working" || bad "POST /agent：$R2"
 sleep 1; J http://127.0.0.1:47831/agent | grep -q '"state":"working"' && ok "GET /agent 回读 working" || bad "GET /agent 回读"
 R3=$(J -X POST http://127.0.0.1:47831/dock -d '{"side":"top"}'); [[ "$R3" == *'"ok":true'* ]] && ok "POST /dock top" || bad "POST /dock：$R3"
+node scripts/test-cards.js >> "$OUT/cards.txt" 2>&1 && ok "卡片识别自测（ui-cards.js）" || bad "卡片识别自测失败：$(tail -3 "$OUT/cards.txt")"
 RA=$(J -X POST http://127.0.0.1:47831/ask -d '{"items":[{"ref":"r1","companionId":"c1","who":"测试","kind":"question","questions":[{"question":"选哪个？","header":"测试","multiSelect":false,"options":[{"label":"甲","description":""},{"label":"乙","description":""}]}]}]}'); [[ "$RA" == *'"count":1'* ]] && ok "POST /ask 伙伴提问气泡" || bad "POST /ask：$RA"
 J -X POST http://127.0.0.1:47831/ask -d '{"items":[]}' >/dev/null
 R3b=$(J -X POST http://127.0.0.1:47831/media -d '{"kind":"music"}'); sleep 1
