@@ -7,10 +7,15 @@ on:
       tag:
         description: '版本标签，例如 v0.6.6'
         required: true
+      carry_from:
+        description: '只更新插件时填上一个版本标签（如 v0.6.6）：不重新构建桌面版，把上个版本的安装包原样带到新版本里'
+        required: false
+        default: ''
 permissions:
   contents: write
 jobs:
   win:
+    if: ${{ github.event.inputs.carry_from == '' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,6 +30,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: out-win, path: out/*, compression-level: 0 }
   mac:
+    if: ${{ github.event.inputs.carry_from == '' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +45,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: out-mac, path: out/*, compression-level: 0 }
   linux:
+    if: ${{ github.event.inputs.carry_from == '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +70,7 @@ jobs:
         with: { name: out-plugin, path: out/*, compression-level: 0 }
   publish:
     needs: [win, mac, linux, plugin]
+    if: ${{ !cancelled() && needs.plugin.result == 'success' && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +80,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.inputs.tag }}
+          CARRY: ${{ github.event.inputs.carry_from }}
         run: |
+          if [ -n "$CARRY" ]; then
+            mkdir -p carry
+            gh release download "$CARRY" -D carry
+            rm -f carry/cindy-desk-pet.cindy
+            for f in carry/*; do [ -e "out/$(basename "$f")" ] || cp "$f" out/; done
+          fi
           ls -la out
           NOTES="Cindy 桌宠 ${TAG}。Windows：Cindy-Pet-Setup-win-x64.exe；macOS：dmg 或 zip（未签名，首次打开需在“隐私与安全性”里点“仍要打开”）；Linux：AppImage 或 deb；Cindy 插件：cindy-desk-pet.cindy。"
           if gh release view "$TAG" >/dev/null 2>&1; then
