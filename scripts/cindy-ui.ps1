@@ -36,7 +36,7 @@ function Scan {
       $q = ''; $opts = @(); $j = $i + 1
       while ($j -lt $nodes.Count -and $nodes[$j].d -ge $b.d) {
         $x = $nodes[$j]
-        if ($x.d -eq $b.d -and $x.t -eq 'Text' -and -not $q) { $q = $x.n }
+        if ($x.d -eq $b.d -and $x.t -eq 'Text' -and $opts.Count -eq 0) { $q = $q + $x.n }
         elseif ($x.d -eq $b.d -and $x.t -eq 'Button') {
           if ($x.n -match '^(输入其他回答|开始语音输入|跳过)') { if ($x.n -like '跳过*') { break } else { $j++; continue } }
           $texts = @(); $k = $j + 1

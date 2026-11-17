@@ -12,7 +12,7 @@ function parseCards(nodes) {
     let q = ''; const opts = []; let j = i + 1;
     while (j < len && nodes[j].d >= b.d) {
       const x = nodes[j];
-      if (x.d === b.d && x.t === 'Text' && !q) q = x.n;
+      if (x.d === b.d && x.t === 'Text' && !opts.length) q += x.n;       // 问题文字可能被拆成几段（数字、链接处），先拼起来
       else if (x.d === b.d && x.t === 'Button') {
         if (/^(输入其他回答|开始语音输入|跳过)/.test(x.n)) { if (x.n.startsWith('跳过')) break; j++; continue; }
         const texts = []; let k = j + 1;
