@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p out
-          cd plugin && zip -qr ../out/cindy-desk-pet.cindy . -x '*.cindy'
+          cd plugin && zip -qrD ../out/cindy-desk-pet.cindy . -x '*.cindy'
       - uses: actions/upload-artifact@v4
         with: { name: out-plugin, path: out/*, compression-level: 0 }
   publish:
