@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('pet', {
   sendAct: (a) => ipcRenderer.send('act:send', a),
   getAgent: () => ipcRenderer.invoke('agent:get'),
   getMedia: () => ipcRenderer.invoke('media:get'),
+  reportBeat: (b) => ipcRenderer.send('media:beat', b),
   openPanel: (tab) => ipcRenderer.send('panel:open', tab),
   emit: (kind, a, b) => ipcRenderer.send('pet:emit', kind, a, b),
   setDock: (d) => ipcRenderer.send('dock:set', d),

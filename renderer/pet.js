@@ -467,6 +467,7 @@ function applyMedia(kind, announce) {
   if (want === mediaPose) return;
   mediaPose = want;
   if (want) {
+    if (want === 'listen_music') loadNotes();
     bump(1, 0);
     if (announce && now() - lastMediaSay > 60000 && !mediaBusy()) { lastMediaSay = now(); say(pick(MEDIA_LINES[mediaKind]), 4000); }
     if (!mediaBusy()) walking = null;
@@ -474,6 +475,82 @@ function applyMedia(kind, announce) {
   syncMediaPose();
 }
 onEvt('media:update', (m) => applyMedia(m && m.kind, true));
+
+// ---------- 听歌时跟着节拍动：身体弹跳 + 左右摇摆 + 音符一个个飘起来 ----------
+// 节拍来自系统正在播放的声音（只分析低频音量，不录音、不保存）。拿不到系统声音时，用固定节奏代替。
+const NOTE_FILES = ['n_y1', 'n_y2', 'n_b1', 'n_b2'];
+const noteUrls = [];
+function loadNotes() {
+  if (noteUrls.length) return;
+  for (const n of NOTE_FILES) { try { noteUrls.push(URL.createObjectURL(new Blob([window.pet.asset('notes/' + n + '.png')], { type: 'image/png' }))); } catch {} }
+}
+let audio = null, realBeat = false;
+let beatEnv = 0, sway = 0, swayTarget = 0, bassAvg = 0, lastBeat = 0, beatDir = 1, beatTimes = [], quietMs = 0, fakeNext = 0, lastNoteAt = 0, lastReport = 0, danced = false, curBpm = 0;
+window.petStartLoopback = async () => {
+  if (audio || (cfg && cfg.musicDance === false)) return;
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    stream.getVideoTracks().forEach((t) => { t.stop(); stream.removeTrack(t); });            // 只要声音，画面轨道立刻丢掉
+    if (!stream.getAudioTracks().length) { realBeat = false; return; }
+    const ctx = new AudioContext(); await ctx.resume();
+    const an = ctx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0.15;
+    ctx.createMediaStreamSource(stream).connect(an);                                       // 只接分析器，不接扬声器，不会出声
+    audio = { stream, ctx, an, buf: new Uint8Array(an.frequencyBinCount) };
+    stream.getAudioTracks()[0].onended = () => window.petStopLoopback();
+    realBeat = true; bassAvg = 0;
+  } catch (e) { realBeat = false; }                                                        // 没有系统声音通道（如 macOS）就用固定节奏
+};
+window.petStopLoopback = () => {
+  if (audio) { try { audio.stream.getTracks().forEach((t) => t.stop()); audio.ctx.close(); } catch {} audio = null; }
+  realBeat = false;
+};
+function spawnNote(strength) {
+  if (!noteUrls.length || fx.querySelectorAll('.note').length > 14) return;
+  const r = sprite.getBoundingClientRect(), im = curImg(); if (!im) return;
+  const top = r.top + im.bbox.t * (r.height / im.h), side = Math.random() < .5 ? -1 : 1;
+  const el = document.createElement('img'); el.className = 'note'; el.src = pick(noteUrls);
+  const size = (24 + Math.random() * 14) * (cfg.scale || 1) * (0.9 + strength * 0.35);
+  el.style.width = size + 'px';
+  el.style.left = (r.left + r.width * (0.5 + side * rand(0.3, 0.46)) - size / 2) + 'px';
+  el.style.top = (top + r.height * rand(0.1, 0.26)) + 'px';
+  el.style.setProperty('--dx', (side * rand(14, 38)) + 'px'); el.style.setProperty('--r0', (side * rand(8, 24)) + 'deg');
+  el.style.setProperty('--dur', (1.5 + Math.random() * 0.9).toFixed(2) + 's');
+  fx.appendChild(el); setTimeout(() => el.remove(), 2600);
+}
+function onBeat(strength, t) {
+  lastBeat = t; beatEnv = Math.max(beatEnv, 0.55 + 0.45 * strength);
+  beatDir = -beatDir; swayTarget = beatDir * (1.6 + 1.8 * strength);
+  if (t - lastNoteAt > 180) { lastNoteAt = t; spawnNote(strength); if (strength > 0.8 && Math.random() < .5) setTimeout(() => spawnNote(strength), 90); }
+  beatTimes.push(t); if (beatTimes.length > 14) beatTimes.shift();
+  if (beatTimes.length >= 5) {                                                             // 由最近几拍的间隔估计速度（BPM）
+    const iv = []; for (let i = 1; i < beatTimes.length; i++) { const d = beatTimes[i] - beatTimes[i - 1]; if (d > 250 && d < 1100) iv.push(d); }
+    if (iv.length >= 3) { iv.sort((a, b) => a - b); let b = 60000 / iv[Math.floor(iv.length / 2)]; while (b < 70) b *= 2; while (b > 170) b /= 2; curBpm = Math.round(b); }
+  }
+}
+function danceStep(t, dt) {
+  const on = cfg && cfg.musicDance !== false && !dock && !dragging && !glide && pose === 'listen_music';
+  if (!on) { if (danced) { danced = false; sprite.style.transform = ''; sprite.style.transformOrigin = ''; } return; }
+  if (audio) {
+    audio.an.getByteFrequencyData(audio.buf);
+    const b = audio.buf, binHz = audio.ctx.sampleRate / audio.an.fftSize;
+    let bass = 0, nb = 0; for (let i = Math.max(1, Math.round(30 / binHz)); i <= Math.round(180 / binHz); i++) { bass += b[i]; nb++; }
+    bass = nb ? bass / nb : 0;
+    let all = 0; for (let i = 1; i < 64; i++) all += b[i]; all /= 63;
+    quietMs = all < 6 ? quietMs + dt : 0;
+    bassAvg += (bass - bassAvg) * Math.min(1, dt / 700);
+    if (quietMs < 500 && bass > bassAvg * 1.12 + 10 && bass > 70 && t - lastBeat > 230) onBeat(Math.min(1, (bass - bassAvg) / 70 + 0.3), t);
+    else if (quietMs < 500) beatEnv = Math.max(beatEnv, Math.min(0.3, all / 255 * 0.5));   // 没有明显鼓点时随整体音量轻轻起伏
+  } else if (t > fakeNext) {                                                                // 没有系统声音：固定节奏（约 104 拍/分钟）
+    fakeNext = t + 575; onBeat(0.5, t); curBpm = 104;
+  }
+  beatEnv *= Math.exp(-dt / 150);
+  sway += (swayTarget - sway) * (1 - Math.exp(-dt / 110)); swayTarget *= Math.exp(-dt / 600);
+  const sc = cfg.scale || 1;
+  sprite.style.transformOrigin = '50% 96%';
+  sprite.style.transform = `translateX(-50%) translateY(${(-beatEnv * 10 * sc).toFixed(1)}px) rotate(${sway.toFixed(2)}deg) scale(${(1 - beatEnv * 0.015).toFixed(3)}, ${(1 + beatEnv * 0.03).toFixed(3)})`;
+  danced = true;
+  if (t - lastReport > 4000) { lastReport = t; window.pet.reportBeat({ bpm: curBpm, real: !!audio }); }        // 告诉 Cindy 里的桌宠页同一个速度
+}
 function sleepNow() { sleeping = true; walking = null; setPose('sleep'); }
 function wake(silent) { if (!sleeping) return; sleeping = false; setPose(restPose()); if (!silent) say(pick(LINES.wake)); }
 
@@ -547,6 +624,7 @@ function loop() {
     walkAnimT += dt; if (walkAnimT > 150) { walkAnimT = 0; walkFrame++; pose = 'walk'; render(); }
   }
   if (mediaPose || pose === 'listen_music' || pose === 'watch_video') syncMediaPose();
+  danceStep(t, dt);
   // 自主行为
   if (dock && dockAuto && t > dockUntil && !chatOpen && !down) undock(false);
   const free = !agentPose && !dock && !dragging && !down && !chatOpen && !walking && !tempPose && !sleeping && pose === 'idle';

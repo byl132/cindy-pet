@@ -27,9 +27,20 @@ function deliver() {
 const server = http.createServer((req, res) => {
   const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
   if (req.method === 'GET' && req.url === '/ping') return send(200, { ok: true, polling: !!poller });
-  if (req.method !== 'POST' || (req.url !== '/chat' && req.url !== '/state' && req.url !== '/act')) return send(404, { ok: false, error: 'not found' });
+  if (req.method !== 'POST' || (req.url !== '/chat' && req.url !== '/state' && req.url !== '/act' && req.url !== '/media')) return send(404, { ok: false, error: 'not found' });
   // 自定义头会让浏览器页面的跨站请求触发预检而被拦下，避免网页偷偷消耗你的模型额度
   if (req.headers['x-desk-pet'] !== '1') return send(403, { ok: false, error: 'forbidden' });
+  if (req.url === '/media') {                       // 桌面版 -> Cindy 页面：正在听歌 / 看视频（以及节拍速度）
+    let b = ''; req.on('data', (c) => { b += c; if (b.length > 1024) req.destroy(); });
+    req.on('end', () => {
+      let j; try { j = JSON.parse(b || '{}'); } catch { return send(400, { ok: false, error: 'bad json' }); }
+      const kind = j.kind === 'music' || j.kind === 'video' ? j.kind : null;
+      for (let i = queue.length - 1; i >= 0; i--) if (queue[i].event === 'media') queue.splice(i, 1);     // 只保留最新的一条
+      queue.push({ event: 'media', media: { kind, bpm: Math.max(0, Math.min(240, +j.bpm || 0)), real: !!j.real, at: Date.now() } }); deliver();
+      send(200, { ok: true });
+    });
+    return;
+  }
   if (req.url === '/act') {                         // 桌面版 -> Cindy 页面：动作同步（手动动作 / rua / 睡觉）
     let b = ''; req.on('data', (c) => { b += c; if (b.length > 2048) req.destroy(); });
     req.on('end', () => {
@@ -111,7 +122,7 @@ const methods = {
   },
   'desk/status': async () => {
     const d = await deskRequest('GET', '/ping');
-    return { ok: true, desktopOnline: !!d.ok, desktopRole: d.role || null, desktop: d.ok ? { outfit: d.outfit, role: d.roleId, userName: d.userName, at: d.at || 0 } : null, relayPort: RELAY_PORT, relayListening: !listenError, relayError: listenError, polling: !!poller };
+    return { ok: true, desktopOnline: !!d.ok, desktopRole: d.role || null, desktop: d.ok ? { outfit: d.outfit, role: d.roleId, userName: d.userName, at: d.at || 0, media: d.media || null, bpm: d.mediaBpm || 0 } : null, relayPort: RELAY_PORT, relayListening: !listenError, relayError: listenError, polling: !!poller };
   },
   'relay/poll': () => new Promise((resolve) => {
     lastPollAt = Date.now();

@@ -75,6 +75,7 @@ bc.onmessage = ({ data }) => {
   else if (data.type === 'state') applyRemote(data.state);
   else if (data.type === 'agent') onAgent(data.agent, data.usage);
   else if (data.type === 'act') applyAct(data.act);
+  else if (data.type === 'media') applyMedia(data.media && data.media.kind, data.media && data.media.bpm);
 };
 
 // ---------- 素材 ----------
@@ -106,7 +107,7 @@ function render() {
   const w = im.w * s, h = im.h * s;
   sprite.src = im.src; sprite.style.width = w + 'px'; sprite.style.height = h + 'px';
   sprite.style.transformOrigin = '50% 100%';
-  sprite.style.transform = `translateX(${cx - w / 2}px) scaleX(${pose === 'walk' && facing < 0 ? -1 : 1})`;
+  lastW = w; sprite.style.transform = xform();
   placeBubble(w, h, s, im);
 }
 function placeBubble(w, h, s, im) {
@@ -117,7 +118,48 @@ function placeBubble(w, h, s, im) {
   bubble.style.top = Math.max(4, top - bubble.offsetHeight - 14) + 'px';
 }
 let agentPose = null;                       // Cindy 正在干活时桌宠保持的工作姿势
-const restPose = () => agentPose || (sleeping ? 'sleep' : 'idle');
+const restPose = () => agentPose || mediaPose || (sleeping ? 'sleep' : 'idle');
+
+// ---------- 听音乐 / 看视频（桌面版感应到后推过来）+ 听歌时跟着节奏晃、音符飘起来 ----------
+const MEDIA_POSE = { music: 'listen_music', video: 'watch_video' };
+let mediaPose = null, mediaBpm = 104, lastW = 0;
+const dn = { on: false, env: 0, sway: 0, swayT: 0, dir: 1, next: 0 };
+function xform() {
+  const sx = pose === 'walk' && facing < 0 ? -1 : 1;
+  const d = dn.on ? ` translateY(${(-dn.env * 10).toFixed(1)}px) rotate(${dn.sway.toFixed(2)}deg) scale(${(1 - dn.env * 0.015).toFixed(3)}, ${(1 + dn.env * 0.03).toFixed(3)})` : '';
+  return `translateX(${cx - lastW / 2}px) scaleX(${sx})${d}`;
+}
+function syncMediaPose() {
+  if (agentPose || walking || tempPose || sleeping) return;
+  if (mediaPose && pose !== mediaPose) setPose(mediaPose);
+  else if (!mediaPose && (pose === 'listen_music' || pose === 'watch_video')) setPose(restPose());
+}
+function applyMedia(kind, bpm) {
+  if (bpm > 40) mediaBpm = bpm;                                           // 桌面版从真实声音里估出来的速度
+  const want = S.sync && kind && imgs[MEDIA_POSE[kind]] ? MEDIA_POSE[kind] : null;
+  if (want === mediaPose) return;
+  mediaPose = want; if (want) walking = null; syncMediaPose();
+}
+const NOTE_SRC = ['n_y1', 'n_y2', 'n_b1', 'n_b2'].map((n) => `/assets/notes/${n}.png`);
+function spawnNote() {
+  if (fx.querySelectorAll('.note').length > 12) return;
+  const r = sprite.getBoundingClientRect(), sr = stage.getBoundingClientRect(), im = cur(); if (!im) return;
+  const side = Math.random() < .5 ? -1 : 1, size = 22 + Math.random() * 14;
+  const el = document.createElement('img'); el.className = 'note'; el.src = pick(NOTE_SRC); el.style.width = size + 'px';
+  el.style.left = (r.left - sr.left + r.width * (0.5 + side * rand(0.3, 0.46)) - size / 2) + 'px';
+  el.style.top = (r.top - sr.top + im.t * (r.height / im.h) + r.height * rand(0.1, 0.26)) + 'px';
+  el.style.setProperty('--dx', (side * rand(14, 38)) + 'px'); el.style.setProperty('--r0', (side * rand(8, 24)) + 'deg');
+  el.style.setProperty('--dur', (1.5 + Math.random() * 0.9).toFixed(2) + 's');
+  fx.appendChild(el); setTimeout(() => el.remove(), 2600);
+}
+function danceStep(t, dt) {
+  if (!(pose === 'listen_music' && !walking)) { if (dn.on) { dn.on = false; dn.env = 0; dn.sway = 0; dn.swayT = 0; render(); } return; }
+  dn.on = true;
+  const period = 60000 / mediaBpm;
+  if (t >= dn.next) { dn.next = (dn.next && t - dn.next < period * 2 ? dn.next : t) + period; dn.env = Math.max(dn.env, 0.75); dn.dir = -dn.dir; dn.swayT = dn.dir * 2.4; spawnNote(); }
+  dn.env *= Math.exp(-dt / 150); dn.sway += (dn.swayT - dn.sway) * (1 - Math.exp(-dt / 110)); dn.swayT *= Math.exp(-dt / 600);
+  sprite.style.transform = xform();
+}
 function setPose(p, ms = 0) { pose = p; tempPose = !!ms; busyUntil = ms ? now() + ms : 0; render(); }
 async function setOutfit(o, announce, fromUser) {
   if (!OUTFITS.some((x) => x[0] === o)) o = 'default';
@@ -274,7 +316,7 @@ function onAgent(a, usage) {
   } else {
     agentPose = null;
     if (a.state === 'done' && prev !== 'done') { doAction('cheer', true); say2('这一轮做完啦！' + (AU ? '今天累计 ' + fmtN(AU.today.total) + ' tokens。' : ''), 6000); }
-    else if (prev !== a.state) setPose(sleeping ? 'sleep' : 'idle');
+    else if (prev !== a.state) setPose(restPose());
   }
   checkBudget();
 }
@@ -300,6 +342,8 @@ setInterval(() => {
   const t = now(), dt = Math.min(60, t - lastT); lastT = t;
   if (!imgs.idle) return;
   if (tempPose && busyUntil && t > busyUntil && t > ruaUntil) { tempPose = false; busyUntil = 0; setPose(restPose()); }
+  if (mediaPose || pose === 'listen_music' || pose === 'watch_video') syncMediaPose();
+  danceStep(t, dt);
   if (walking) {
     const sp = 0.07 * dt, dx = walking.tx - cx; facing = dx >= 0 ? 1 : -1;
     if (Math.abs(dx) <= sp) { cx = walking.tx; walking = null; setPose('idle'); nextDecision = t + rand(5000, 12000); }
@@ -313,7 +357,7 @@ setInterval(() => {
     else if (imgs.sit && r < .75) { doAction(pick(['sit', 'stretch', 'hug', 'drink'])); nextDecision = t + rand(10000, 20000); }
     else { setPose(Math.random() < .3 ? 'talk' : 'idle', 1800); nextDecision = t + rand(6000, 14000); }
   }
-  if (!agentPose && !sleeping && !walking && t - lastInteract > 5 * 60 * 1000) sleepNow();
+  if (!agentPose && !mediaPose && !sleeping && !walking && t - lastInteract > 5 * 60 * 1000) sleepNow();
   if (t - lastCare > 45 * 60 * 1000 && !sleeping) { lastCare = t; const l = pick(LINES.care); if (imgs.drink && /水/.test(l)) doAction('drink', true); else setPose('talk', 5000); say(l, 8000); }
 }, 16);
 window.addEventListener('resize', () => { cx = Math.max(60, Math.min(stage.clientWidth - 60, cx)); render(); });
@@ -338,6 +382,7 @@ async function pingDesktop() {
     if (r.desktop.at > (S.sharedAt || 0)) await applyRemote(r.desktop);
     else if ((S.sharedAt || 0) > r.desktop.at) pushShared();
   }
+  if (on && S.sync && r.desktop) applyMedia(r.desktop.media, r.desktop.bpm);          // 页面刚打开 / 错过推送时，也能追上桌面版正在听什么
   dot.className = 'dot ' + (on ? 'on' : 'off'); dot.title = on ? '桌面版在线' : '未检测到桌面版';
   $('#hint').textContent = on
     ? '桌面版在线。想让它用 Cindy 的模型聊天：桌面版右键 → 设置 → 对话来源选“Cindy 模型”（需保持本页面打开）。'
@@ -417,6 +462,6 @@ $('#pScan').onclick = async () => { const r = await request({ type: 'project-sca
   const h = new Date().getHours();
   const hi = h < 5 ? '这么晚还没睡……我陪你一会儿，但别太晚。' : h < 11 ? '早上好。今天也一起加油吧。' : h < 14 ? '中午啦，记得吃饭。' : h < 18 ? '下午好，要不要喝点水？' : h < 23 ? '晚上好，今天辛苦了。' : '夜深了，快去休息吧。';
   setTimeout(() => { setPose('talk', 4500); say(hi, 6000); }, 500);
-  pingDesktop(); setInterval(pingDesktop, 25000);
+  pingDesktop(); setInterval(pingDesktop, 8000);
   request({ type: 'dashboard', fresh: true }, 20000).then((r) => { if (r && r.ok) { AU = r.usage; if (r.agent) onAgent(r.agent, r.usage); } }); setInterval(() => fetch('/wake').catch(() => {}), 40000);
 })();

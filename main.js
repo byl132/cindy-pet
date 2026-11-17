@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen, session, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -39,7 +39,7 @@ const DEFAULT_CONFIG = {
   affection: 0, outfit: 'default',
   chatBackend: 'api', relayUrl: 'http://127.0.0.1:47832',
   followCindy: false, followProcess: process.platform === 'win32' ? 'Cindy.exe' : (IS_LINUX ? 'cindy' : 'Cindy'),
-  autoPeek: false, gravity: false, dock: null, sharedAt: 0, mediaSense: true,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
+  autoPeek: false, gravity: false, dock: null, sharedAt: 0, mediaSense: true, musicDance: true,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
   state: { mood: 70, energy: 80, firstDay: today(), ruaTotal: 0, chatTotal: 0, focusDone: 0, moodLog: [] },
   reminders: []
 };
@@ -54,12 +54,36 @@ let mediaState = { kind: null, since: 0 }, mediaWatcher = null;
 function applyMediaSense() {
   const on = cfg.mediaSense !== false;
   if (on && !mediaWatcher) {
-    mediaWatcher = mediaMod.start({ getCfg: () => cfg, log: (...a) => console.log('[media]', ...a),
-      onKind: (k) => { mediaState = { kind: k, since: Date.now() }; broadcast('media:update', mediaState); } });
+    mediaWatcher = mediaMod.start({ getCfg: () => cfg, log: (...a) => console.log('[media]', ...a), onKind: (k) => setMedia(k, false) });
   } else if (!on && mediaWatcher) {
-    mediaWatcher.stop(); mediaWatcher = null; mediaState = { kind: null, since: Date.now() }; broadcast('media:update', mediaState);
+    mediaWatcher.stop(); mediaWatcher = null; setMedia(null, false);
   }
 }
+function setMedia(k, manual) {
+  mediaState = { kind: k, since: Date.now(), manual: !!manual, bpm: 0, real: false };
+  broadcast('media:update', mediaState); pushMedia(true); controlLoopback();
+}
+// 推给 Cindy 里的桌宠页（经本地中继）；节拍估计变化时也会带上 bpm，让那边的桌宠跟着同一个速度晃
+let lastMediaPush = 0;
+function pushMedia(force) {
+  if (cfg.syncActions === false) return;
+  if (!force && Date.now() - lastMediaPush < 3500) return;
+  lastMediaPush = Date.now();
+  fetch((cfg.relayUrl || 'http://127.0.0.1:47832').replace(/\/+$/, '') + '/media', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Desk-Pet': '1' },
+    body: JSON.stringify({ kind: mediaState.kind, bpm: mediaState.bpm || 0, real: !!mediaState.real }), signal: AbortSignal.timeout(2000)
+  }).catch(() => {});
+}
+// 听音乐时才读取“系统正在发出的声音有多大声”（只做节拍分析，不录音、不保存、不上传）；其余时间关闭
+function controlLoopback() {
+  if (!win || win.isDestroyed()) return;
+  const want = mediaState.kind === 'music' && cfg.musicDance !== false && process.platform === 'win32';     // 只在 Windows 读系统声音；Mac 会弹“屏幕录制”授权框，Linux 通道不稳定，这两个系统用固定节奏
+  win.webContents.executeJavaScript(want ? 'window.petStartLoopback && window.petStartLoopback()' : 'window.petStopLoopback && window.petStopLoopback()', true).catch(() => {});
+}
+ipcMain.on('media:beat', (_e, b) => {
+  if (!b || mediaState.kind !== 'music') return;
+  mediaState.bpm = Math.max(0, Math.min(240, Math.round(+b.bpm || 0))); mediaState.real = !!b.real; pushMedia(false);
+});
 
 function loadConfig() {
   cfgPath = path.join(app.getPath('userData'), 'config.json');
@@ -111,6 +135,7 @@ function createWindow() {
   if (IS_LINUX) win.setVisibleOnAllWorkspaces(true);
   if (process.platform === 'darwin') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });   // 切换桌面 / 全屏应用时仍然在场
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.webContents.once('did-finish-load', () => setTimeout(controlLoopback, 3000));
   win.once('ready-to-show', () => { if (!cfg.followCindy) win.show(); else pollCindy(true); });
   win.webContents.on('console-message', (e) => { if (e.level === 'error' || e.level === 'warning') console.log('[renderer]', e.message); });
   win.webContents.on('render-process-gone', (_e, d) => console.log('[renderer gone]', d.reason));
@@ -142,7 +167,7 @@ ipcMain.handle('config:get', () => cfg);
 ipcMain.handle('config:set', (_e, patch) => {
   const prev = { o: cfg.outfit, r: cfg.activeRole, n: cfg.userName };
   cfg = { ...cfg, ...patch, api: { ...cfg.api, ...(patch.api || {}) }, state: { ...cfg.state, ...(patch.state || {}) } };
-  saveConfig(); broadcast('config:changed', cfg); startServer(); applyFollow(); applyMediaSense();
+  saveConfig(); broadcast('config:changed', cfg); startServer(); applyFollow(); applyMediaSense(); controlLoopback();
   if (prev.o !== cfg.outfit || prev.r !== cfg.activeRole || prev.n !== cfg.userName) touchShared('local');
   return cfg;
 });
@@ -303,6 +328,7 @@ function buildMenu() {
     { label: '跟随 Cindy（Cindy 运行时才显示）', type: 'checkbox', checked: !!cfg.followCindy,
       click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); broadcast('config:changed', cfg); } },
     { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
+    { label: '听歌时随节拍律动（读取系统声音大小，不录音）', type: 'checkbox', checked: cfg.musicDance !== false, click: (i) => { cfg.musicDance = i.checked; saveConfig(); controlLoopback(); } },
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '隐藏桌宠', click: () => hidePet(true) },
@@ -349,6 +375,7 @@ function updateTray() {
     { type: 'separator' },
     { label: '跟随 Cindy', type: 'checkbox', checked: !!cfg.followCindy, click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); } },
     { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
+    { label: '听歌时随节拍律动（读取系统声音大小，不录音）', type: 'checkbox', checked: cfg.musicDance !== false, click: (i) => { cfg.musicDance = i.checked; saveConfig(); controlLoopback(); } },
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
@@ -388,7 +415,7 @@ function startServer() {
   if (server) { try { server.close(); } catch {} server = null; }
   server = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); };
-    if (req.method === 'GET' && req.url === '/ping') return reply(200, { ok: true, role: activeRole().name, roleId: cfg.activeRole, outfit: cfg.outfit, userName: cfg.userName, at: cfg.sharedAt || 0, mood: cfg.state.mood, energy: cfg.state.energy, agent: agentSnap.state, media: mediaState.kind, visible: !!(win && win.isVisible()) });
+    if (req.method === 'GET' && req.url === '/ping') return reply(200, { ok: true, role: activeRole().name, roleId: cfg.activeRole, outfit: cfg.outfit, userName: cfg.userName, at: cfg.sharedAt || 0, mood: cfg.state.mood, energy: cfg.state.energy, agent: agentSnap.state, media: mediaState.kind, mediaBpm: mediaState.bpm || 0, mediaReal: !!mediaState.real, visible: !!(win && win.isVisible()) });
     if (req.method === 'GET' && req.url === '/agent') return reply(200, { ok: true, ...agentSnap });
     if (req.method === 'GET' && (req.url === '/' || req.url === '/api')) return reply(200, {
       ok: true, name: 'Cindy 桌宠本地接口', version: app.getVersion(), auth: cfg.notifyToken ? 'X-Token 头或请求体 token' : '无',
@@ -425,7 +452,7 @@ function startServer() {
         toPet('menu:action', 'action_quiet', j.name); return reply(200, { ok: true });
       } else if (req.url === '/media') {
         const k = j.kind === 'music' || j.kind === 'video' ? j.kind : null;
-        mediaState = { kind: k, since: Date.now(), manual: true }; broadcast('media:update', mediaState); return reply(200, { ok: true, kind: k });
+        setMedia(k, true); return reply(200, { ok: true, kind: k });
       } else if (req.url === '/act') {                         // 来自 Cindy 页面的动作同步（不再回传）
         if (!['action', 'rua', 'sleep', 'wake'].includes(j.kind)) return reply(400, { ok: false, error: 'bad kind' });
         toPet('act:remote', { kind: j.kind, name: String(j.name || '').slice(0, 20) }); return reply(200, { ok: true });
@@ -491,7 +518,11 @@ else {
   });
   app.whenReady().then(() => {
     if (process.platform === 'darwin' && app.dock) app.dock.hide();          // macOS：不在 Dock 里显示图标，只留菜单栏图标
-    loadConfig(); createWindow(); createTray(); startServer(); applyFollow(); applyMediaSense();
+    loadConfig();
+    session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {      // 只给“系统声音”，页面拿到后立刻丢掉画面轨道
+      desktopCapturer.getSources({ types: ['screen'] }).then((src) => callback({ video: src[0], audio: 'loopback' })).catch(() => callback({}));
+    });
+    createWindow(); createTray(); startServer(); applyFollow(); applyMediaSense(); controlLoopback();
     const u = process.argv.find(a => a.startsWith(PROTOCOL + '://')); if (u) setTimeout(() => handleUrl(u), 1500);
   });
 }

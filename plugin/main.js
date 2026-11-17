@@ -218,7 +218,8 @@ async function relayLoop() {
       if (!r.ok) { await sleep(4000); continue; }
       const job = r.result;
       if (job && job.event === 'state') { bc.postMessage({ type: 'state', state: job.state }); continue; }   // 桌面版改了设置 -> 通知页面
-      if (job && job.event === 'act') { bc.postMessage({ type: 'act', act: job.act }); continue; }          // 桌面版做了动作 -> 页面里的桌宠也做
+      if (job && job.event === 'act') { bc.postMessage({ type: 'act', act: job.act }); continue; }
+      if (job && job.event === 'media') { bc.postMessage({ type: 'media', media: job.media }); continue; }          // 桌面版在听歌/看视频 -> 页面里的桌宠也跟着          // 桌面版做了动作 -> 页面里的桌宠也做
       if (!job || !job.id) continue;
       const out = await askCindy(job).catch((e) => ({ ok: false, error: String((e && e.message) || e) }));
       await cindy.node.request({ method: 'relay/reply', params: { id: job.id, ...out }, timeoutMs: 10000 });

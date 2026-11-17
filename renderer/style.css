@@ -46,3 +46,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: transparen
 
 #sprite.dock-t { bottom: auto; top: 0; }
 #bubble.below::after { bottom: auto; top: -9px; transform: translateX(-50%) rotate(225deg); }
+
+.note { position: absolute; height: auto; pointer-events: none; will-change: transform, opacity; opacity: 0; animation: noteFloat var(--dur, 1.9s) ease-out forwards; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+@keyframes noteFloat {
+  0%   { opacity: 0; transform: translate(0, 8px) rotate(var(--r0, 10deg)) scale(.5); }
+  12%  { opacity: 1; transform: translate(calc(var(--dx, 20px) * .15), -10px) rotate(var(--r0, 10deg)) scale(1.05); }
+  35%  { transform: translate(calc(var(--dx, 20px) * .7), -42px) rotate(calc(var(--r0, 10deg) * -.7)) scale(1); }
+  60%  { transform: translate(calc(var(--dx, 20px) * -.3), -78px) rotate(calc(var(--r0, 10deg) * .8)) scale(.98); }
+  82%  { opacity: .9; transform: translate(calc(var(--dx, 20px) * .6), -108px) rotate(calc(var(--r0, 10deg) * -.5)) scale(.95); }
+  100% { opacity: 0; transform: translate(calc(var(--dx, 20px) * -.2), -135px) rotate(var(--r0, 10deg)) scale(.85); }
+}

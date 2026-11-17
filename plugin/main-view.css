@@ -53,3 +53,13 @@ button.mini { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 6
 .file { font-size: 11px; color: var(--text-secondary, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task { display: flex; align-items: center; gap: 6px; margin: 4px 0; } .task .ttl { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .chip2 { color: #fff; font-size: 11px; padding: 1px 6px; border-radius: 99px; flex: 0 0 auto; }
+
+.note { position: absolute; height: auto; pointer-events: none; will-change: transform, opacity; opacity: 0; animation: noteFloat var(--dur, 1.9s) ease-out forwards; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); z-index: 3; }
+@keyframes noteFloat {
+  0%   { opacity: 0; transform: translate(0, 8px) rotate(var(--r0, 10deg)) scale(.5); }
+  12%  { opacity: 1; transform: translate(calc(var(--dx, 20px) * .15), -10px) rotate(var(--r0, 10deg)) scale(1.05); }
+  35%  { transform: translate(calc(var(--dx, 20px) * .7), -42px) rotate(calc(var(--r0, 10deg) * -.7)) scale(1); }
+  60%  { transform: translate(calc(var(--dx, 20px) * -.3), -78px) rotate(calc(var(--r0, 10deg) * .8)) scale(.98); }
+  82%  { opacity: .9; transform: translate(calc(var(--dx, 20px) * .6), -108px) rotate(calc(var(--r0, 10deg) * -.5)) scale(.95); }
+  100% { opacity: 0; transform: translate(calc(var(--dx, 20px) * -.2), -135px) rotate(var(--r0, 10deg)) scale(.85); }
+}
