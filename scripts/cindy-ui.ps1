@@ -4,6 +4,7 @@
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $A = [System.Windows.Automation.AutomationElement]
 $W = [System.Windows.Automation.TreeWalker]::RawViewWalker
+Add-Type -Namespace Pet -Name Win -MemberDefinition '[DllImport("user32.dll")] public static extern bool ShowWindowAsync(System.IntPtr h, int c); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(System.IntPtr h); [DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr h);'
 function CindyWin {
   $p = Get-Process -Name Cindy -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
   if (-not $p) { return $null }
@@ -75,7 +76,10 @@ while (($line = [Console]::In.ReadLine()) -ne $null) {
   try {
     $cmd = $line | ConvertFrom-Json
     if ($cmd.cmd -eq 'scan') { $r = Scan; Out @{ id = $cmd.id; ok = $true; cindy = $r.cindy; items = @($r.items) } }
-    elseif ($cmd.cmd -eq 'focus') { $win = CindyWin; if ($win) { try { $win.SetFocus() } catch {} }; Out @{ id = $cmd.id; ok = [bool]$win } }
+    elseif ($cmd.cmd -eq 'focus') {
+      $p = Get-Process -Name Cindy -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+      if ($p) { $h = $p.MainWindowHandle; if ([Pet.Win]::IsIconic($h)) { [void][Pet.Win]::ShowWindowAsync($h, 9) }; [void][Pet.Win]::SetForegroundWindow($h) }
+      Out @{ id = $cmd.id; ok = [bool]$p } }
     elseif ($cmd.cmd -eq 'click') {
       $r = Scan; $item = @($r.items) | Where-Object { $_.sig -eq $cmd.sig } | Select-Object -First 1
       if (-not $item) { Out @{ id = $cmd.id; ok = $false; error = 'changed' }; continue }

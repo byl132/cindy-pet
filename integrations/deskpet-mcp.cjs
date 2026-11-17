@@ -10,7 +10,7 @@ const readline = require('readline');
 
 const BASE = new URL(process.env.DESKPET_URL || 'http://127.0.0.1:47831');
 const TOKEN = process.env.DESKPET_TOKEN || '';
-const VERSION = '0.6.4';
+const VERSION = '0.6.5';
 
 function call(method, path, body) {
   return new Promise((resolve) => {

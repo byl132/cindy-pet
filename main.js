@@ -46,6 +46,19 @@ const DEFAULT_CONFIG = {
 
 let cfgPath, cfg, win, settingsWin, panelWin, server, tray;
 let agentSnap = { state: 'idle' };
+// ---- 运行日志：记录启动 / 退出 / 崩溃，方便查“自己退出”的原因（userData/pet.log，超过 300KB 自动清空）----
+function plog(...a) {
+  try {
+    const f = path.join(app.getPath('userData'), 'pet.log');
+    try { if (fs.statSync(f).size > 300000) fs.writeFileSync(f, ''); } catch {}
+    fs.appendFileSync(f, new Date().toISOString() + ' ' + a.map((x) => (x && x.stack) || (typeof x === 'string' ? x : JSON.stringify(x))).join(' ') + '\n');
+  } catch {}
+}
+process.on('uncaughtException', (e) => plog('[uncaughtException]', e));
+process.on('unhandledRejection', (e) => plog('[unhandledRejection]', e));
+app.on('child-process-gone', (_e, d) => plog('[child-process-gone]', d));
+app.on('quit', (_e, code) => plog('[quit] exitCode=' + code));
+plog('[start] v' + app.getVersion() + ' pid=' + process.pid);
 let manualHidden = false, followHidden = false, quitting = false;
 
 // ---------- 感应音乐 / 视频：电脑在放歌就戴耳机听，在放视频就抱着平板看（只读“类型”，不读歌名/标题）----------
@@ -138,7 +151,11 @@ function createWindow() {
   win.webContents.once('did-finish-load', () => setTimeout(controlLoopback, 3000));
   win.once('ready-to-show', () => { if (!cfg.followCindy) win.show(); else pollCindy(true); });
   win.webContents.on('console-message', (e) => { if (e.level === 'error' || e.level === 'warning') console.log('[renderer]', e.message); });
-  win.webContents.on('render-process-gone', (_e, d) => console.log('[renderer gone]', d.reason));
+  win.webContents.on('render-process-gone', (_e, d) => {
+    console.log('[renderer gone]', d.reason); plog('[renderer gone]', d);
+    if (!quitting && win && !win.isDestroyed() && d.reason !== 'clean-exit') setTimeout(() => { try { win.reload(); } catch {} }, 800);     // 页面崩了就原地重载，不让桌宠消失
+  });
+  win.on('unresponsive', () => plog('[window unresponsive]'));
 }
 
 function openSettings() {
@@ -453,12 +470,17 @@ function pushAsk() {
   askItems = [...askPlugin, ...askUi]; toPet('ask:update', askItems);
   if (askItems.length && win && !win.isVisible() && !manualHidden) showPet();
 }
-let uiBusy = false, uiIdleTicks = 0;
+let uiBusy = false, uiIdleTicks = 0, uiNotWaiting = 0;
 async function uiTick(force) {
   if (uiBusy || process.platform !== 'win32' || cfg.cindyUiBridge === false) return;
   const waiting = agentSnap && (agentSnap.state === 'waiting-approval' || agentSnap.state === 'waiting-input') && (!agentSnap.source || agentSnap.source === 'cindy');
-  if (!waiting && !force && !askUi.length) { uiIdleTicks = 0; return; }
-  uiBusy = true;
+  if (!waiting && !force) {
+    // Cindy 不再“等你”了（在 Cindy 里处理掉了 / 超时）：连续两次确认后收起卡片
+    if (askUi.length && ++uiNotWaiting >= 2) { askUi = []; uiMap.clear(); pushAsk(); }
+    if (!askUi.length) { uiIdleTicks++; if (uiIdleTicks > 3) uiStop(); }
+    return;
+  }
+  uiNotWaiting = 0; uiIdleTicks = 0; uiBusy = true;
   try {
     const r = await uiCall({ cmd: 'scan' });
     if (process.env.PET_UI_DEBUG) console.log('uiscan', JSON.stringify(r).slice(0, 300));
@@ -470,12 +492,14 @@ async function uiTick(force) {
           ? { ...base, questions: [{ question: String(x.question || '').slice(0, 300), header: String(x.header || '').slice(0, 30), multiSelect: false, options: (x.options || []).slice(0, 8).map((o) => ({ label: String(o.label || '').slice(0, 80), description: String(o.description || '').slice(0, 160) })) }] }
           : { ...base, title: String(x.title || '').slice(0, 120), tool: String(x.title || '').slice(0, 120), body: String(x.body || '').slice(0, 1500), allowHere: true };
       });
-      const sig = JSON.stringify(items);
-      if (sig !== JSON.stringify(askUi)) { askUi = items; uiMap.clear(); for (const x of r.items || []) uiMap.set('ui:' + x.sig, x); pushAsk(); }
-      uiIdleTicks = items.length ? 0 : uiIdleTicks + 1;
+      if (items.length) {
+        if (JSON.stringify(items) !== JSON.stringify(askUi)) { askUi = items; uiMap.clear(); for (const x of r.items || []) uiMap.set('ui:' + x.sig, x); pushAsk(); }
+      } else if (askUi.length && !askUi.every((i) => i.stale)) {
+        // 扫不到卡片，但 Cindy 仍在“等你”：多半是切到了别的项目 / 对话，或 Cindy 被最小化 / 切到了桌面。卡片先留着，标注“不在当前画面”。
+        askUi = askUi.map((i) => ({ ...i, stale: true })); pushAsk();
+      }
     }
   } finally { uiBusy = false; }
-  if (!waiting && uiIdleTicks > 3 && !askUi.length) uiStop();       // 不用时把常驻的 PowerShell 关掉
 }
 setInterval(() => uiTick(false), 1500);
 async function uiAnswer(p) {
@@ -487,7 +511,10 @@ async function uiAnswer(p) {
   if (!steps.length) return { ok: false, error: '没有选择。' };
   for (const s of steps) {
     const r = await uiCall({ cmd: 'click', sig: x.sig, ...s });
-    if (!r.ok) return { ok: false, error: r.error === 'changed' ? '这条请求刚刚变了，请看最新的。' : '没点到 Cindy 里的按钮，请回 Cindy 处理。' };
+    if (!r.ok) {
+      if (r.error === 'changed') { await uiCall({ cmd: 'focus' }); return { ok: false, error: '这条请求现在不在 Cindy 的当前画面。已帮你打开 Cindy，请切回那个项目 / 对话，再点一次。' }; }
+      return { ok: false, error: '没点到 Cindy 里的按钮，请回 Cindy 处理。' };
+    }
   }
   askUi = askUi.filter((i) => i.ref !== p.ref); pushAsk(); setTimeout(() => uiTick(true), 700);
   return { ok: true };
@@ -622,4 +649,4 @@ else {
   });
 }
 app.on('window-all-closed', (e) => { if (!quitting) e.preventDefault?.(); });
-app.on('before-quit', () => { quitting = true; uiStop(); if (mediaWatcher) { mediaWatcher.stop(); mediaWatcher = null; } });
+app.on('before-quit', () => { plog('[before-quit]'); quitting = true; uiStop(); if (mediaWatcher) { mediaWatcher.stop(); mediaWatcher = null; } });
