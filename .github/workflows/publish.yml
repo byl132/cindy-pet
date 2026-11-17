@@ -1,0 +1,82 @@
+name: publish
+# 一键发布：在 GitHub 上构建 Windows / macOS / Linux 安装包和 Cindy 插件，并发布成 Release（固定文件名，插件里的下载链接指向 releases/latest/download/<文件名>）。
+# 用法：Actions → publish → Run workflow，填版本号（如 v0.6.6）。
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '版本标签，例如 v0.6.6'
+        required: true
+permissions:
+  contents: write
+jobs:
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm install
+      - run: npx electron-builder --win nsis --x64 --publish never
+      - shell: bash
+        run: |
+          mkdir -p out
+          cp dist/*Setup*.exe out/Cindy-Pet-Setup-win-x64.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: out-win, path: out/*, compression-level: 0 }
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm install
+      - run: bash scripts/build-mac.sh
+      - run: |
+          mkdir -p out
+          cp dist/*.dmg out/Cindy-Pet-mac-universal.dmg
+          cp dist/*.zip out/Cindy-Pet-mac-universal.zip
+      - uses: actions/upload-artifact@v4
+        with: { name: out-mac, path: out/*, compression-level: 0 }
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci || npm install
+      - run: npx electron-builder --linux AppImage deb --x64 --publish never
+      - run: |
+          mkdir -p out
+          cp dist/*.AppImage out/Cindy-Pet-linux-x86_64.AppImage
+          cp dist/*.deb out/Cindy-Pet-linux-amd64.deb
+      - uses: actions/upload-artifact@v4
+        with: { name: out-linux, path: out/*, compression-level: 0 }
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir -p out
+          cd plugin && zip -qr ../out/cindy-desk-pet.cindy . -x '*.cindy'
+      - uses: actions/upload-artifact@v4
+        with: { name: out-plugin, path: out/*, compression-level: 0 }
+  publish:
+    needs: [win, mac, linux, plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: out, pattern: 'out-*', merge-multiple: true }
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          ls -la out
+          NOTES="Cindy 桌宠 ${TAG}。Windows：Cindy-Pet-Setup-win-x64.exe；macOS：dmg 或 zip（未签名，首次打开需在“隐私与安全性”里点“仍要打开”）；Linux：AppImage 或 deb；Cindy 插件：cindy-desk-pet.cindy。"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --target "${GITHUB_SHA}" --title "Cindy 桌宠 ${TAG}" --notes "$NOTES"
+          fi

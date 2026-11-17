@@ -58,5 +58,5 @@ curl http://127.0.0.1:47831/ping
 
 ## 下载与发布
 - 安装包都在 GitHub 的 Releases（`releases/latest`），固定文件名：`Cindy-Pet-Setup-win-x64.exe`、`Cindy-Pet-mac-universal.dmg/.zip`、`Cindy-Pet-linux-x86_64.AppImage`、`Cindy-Pet-linux-amd64.deb`、`cindy-desk-pet.cindy`（插件）。
-- 发布新版：Actions → release → Run workflow，填版本号（如 `v0.6.6`），会自动构建四个端并发布。
+- 发布新版：Actions → publish → Run workflow，填版本号（如 `v0.6.6`），会自动构建四个端并发布。
 - Cindy 里的“桌宠”页面在没检测到桌面版时，会显示按系统区分的下载按钮，指向上面的固定链接。
