@@ -29,3 +29,10 @@
 npm install
 npm run dist:linux      # 生成 dist/*.AppImage 与 dist/*.deb
 ```
+
+
+## 读取并点击 Cindy 界面（实验功能，默认关闭，未经真机验证）
+让桌宠把项目里的提问卡 / 命令确认卡显示在桌宠上，点选后替你点击 Cindy 里的按钮。
+- 开启：右键桌宠 → 勾选“读取并点击 Cindy 界面（实验功能…）”，会先弹出说明。
+- 需要：`sudo apt install python3-gi gir1.2-atspi-2.0`，并开启系统无障碍服务（GNOME：`gsettings set org.gnome.desktop.interface toolkit-accessibility true`），然后重启 Cindy，Cindy 才会暴露界面树。
+- Wayland 下可能读不到；不同桌面环境表现不一样。脚本（`scripts/cindy-ui-linux.py`，AT-SPI）没有在真实 Linux 桌面上运行过，只做了语法检查。

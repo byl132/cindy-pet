@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen, session, desktopCapturer, dialog, systemPreferences } = require('electron');
+const uiCards = require('./ui-cards.js');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -346,6 +347,7 @@ function buildMenu() {
       click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); broadcast('config:changed', cfg); } },
     { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
     { label: '听歌时随节拍律动（读取系统声音大小，不录音）', type: 'checkbox', checked: cfg.musicDance !== false, click: (i) => { cfg.musicDance = i.checked; saveConfig(); controlLoopback(); } },
+    uiBridgeMenuItem(),
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '隐藏桌宠', click: () => hidePet(true) },
@@ -393,6 +395,7 @@ function updateTray() {
     { label: '跟随 Cindy', type: 'checkbox', checked: !!cfg.followCindy, click: (i) => { cfg.followCindy = i.checked; saveConfig(); applyFollow(); } },
     { label: '感应音乐 / 视频（放歌时听歌、放视频时看视频）', type: 'checkbox', checked: cfg.mediaSense !== false, click: (i) => { cfg.mediaSense = i.checked; saveConfig(); applyMediaSense(); } },
     { label: '听歌时随节拍律动（读取系统声音大小，不录音）', type: 'checkbox', checked: cfg.musicDance !== false, click: (i) => { cfg.musicDance = i.checked; saveConfig(); controlLoopback(); } },
+    uiBridgeMenuItem(),
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
     { label: '设置…', click: openSettings },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
@@ -435,9 +438,11 @@ function applyFollow() {
 let askPlugin = [], askUi = [], askItems = [];
 const uiMap = new Map();
 let uiProc = null, uiBuf = '', uiSeq = 0; const uiWait = new Map();
-function uiScriptPath() {
-  const dst = path.join(app.getPath('userData'), 'cindy-ui.ps1');
-  try { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.writeFileSync(dst, fs.readFileSync(path.join(__dirname, 'scripts', 'cindy-ui.ps1'))); } catch (e) { console.error('cindy-ui copy', e.message); }
+// Windows 默认开启；macOS / Linux 是实验功能（没经过真机验证），默认关闭，要在菜单里手动开启
+const uiEnabled = () => (process.platform === 'win32' ? cfg.cindyUiBridge !== false : cfg.cindyUiBridge === true);
+function uiScriptPath(name = 'cindy-ui.ps1') {
+  const dst = path.join(app.getPath('userData'), name);
+  try { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.writeFileSync(dst, fs.readFileSync(path.join(__dirname, 'scripts', name))); } catch (e) { console.error('cindy-ui copy', e.message); }
   return dst;
 }
 function uiStart() {
@@ -456,8 +461,57 @@ function uiStart() {
   uiProc.on('exit', () => { uiProc = null; for (const [, w] of uiWait) { clearTimeout(w.t); w.resolve({ ok: false, error: 'bridge exited' }); } uiWait.clear(); });
   uiProc.stderr.on('data', () => {});
 }
+function uiBridgeMenuItem() {
+  const win = process.platform === 'win32';
+  return {
+    label: win ? '读取并点击 Cindy 界面（项目里的提问 / 命令确认卡）' : '读取并点击 Cindy 界面（实验功能，未经真机验证，默认关闭）',
+    type: 'checkbox', checked: uiEnabled(),
+    click: async (i) => {
+      if (!win && i.checked) {
+        const how = process.platform === 'darwin'
+          ? '需要在 系统设置 → 隐私与安全性 → 辅助功能 里允许“Cindy 桌宠”，Cindy 也需要允许被辅助功能读取。'
+          : '需要安装 python3-gi 和 gir1.2-atspi-2.0，并开启系统无障碍服务（GNOME：gsettings set org.gnome.desktop.interface toolkit-accessibility true），然后重启 Cindy。Wayland 下可能读不到。';
+        const r = await dialog.showMessageBox({ type: 'warning', buttons: ['开启', '取消'], defaultId: 1, cancelId: 1, title: '实验功能', message: '读取并点击 Cindy 界面（实验功能）',
+          detail: '这个功能让桌宠读取 Cindy 窗口里的提问卡和命令确认卡，并在你点桌宠时替你点击对应按钮。\n\n它没有经过真机验证。' + how + '\n\n出问题随时在这里取消勾选即可关闭。' });
+        if (r.response !== 0) return;
+        if (process.platform === 'darwin') { try { systemPreferences.isTrustedAccessibilityClient(true); } catch {} }
+      }
+      cfg.cindyUiBridge = !!i.checked; saveConfig();
+      if (!i.checked) { askUi = []; uiMap.clear(); pushAsk(); }
+    }
+  };
+}
 function uiStop() { if (uiProc) { try { uiProc.kill(); } catch {} uiProc = null; } }
+// macOS / Linux：每次调用起一个短命进程读取界面树，卡片识别在 ui-cards.js 里完成
+function uiExec(args) {
+  return new Promise((resolve) => {
+    const mac = process.platform === 'darwin';
+    const script = uiScriptPath(mac ? 'cindy-ui-mac.js' : 'cindy-ui-linux.py');
+    const file = mac ? 'osascript' : 'python3', a = mac ? ['-l', 'JavaScript', script, ...args] : [script, ...args];
+    require('child_process').execFile(file, a, { timeout: 9000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, out) => {
+      try { resolve(JSON.parse(String(out).trim().split('\n').pop())); } catch { resolve({ ok: false, error: err ? String(err.message).slice(0, 120) : 'bad output' }); }
+    });
+  });
+}
+async function uiCallPortable(cmd) {
+  if (cmd.cmd === 'focus') return uiExec(['focus']);
+  const d = await uiExec(['dump']);
+  if (!d.ok) return d;
+  if (!d.cindy) return { ok: true, cindy: false, items: [] };
+  const items = uiCards.parseCards(d.nodes || []);
+  if (cmd.cmd === 'scan') return { ok: true, cindy: true, items };
+  if (cmd.cmd === 'click') {
+    const it = items.find((x) => x.sig === cmd.sig); if (!it) return { ok: false, error: 'changed' };
+    let idx = -1;
+    if (it.kind === 'permission') idx = cmd.target === 'allow' ? it.allowIdx : cmd.target === 'deny' ? it.denyIdx : -1;
+    else if (it.kind === 'question' && cmd.target === 'option') { const o = it.options.find((x) => x.label === cmd.label); idx = o ? o.idx : -1; }
+    if (idx < 0) return { ok: false, error: 'nobutton' };
+    return uiExec(['press', String(idx), d.nodes[idx].n]);
+  }
+  return { ok: false, error: 'unknown' };
+}
 function uiCall(cmd) {
+  if (process.platform !== 'win32') return uiCallPortable(cmd);
   uiStart(); if (!uiProc) return Promise.resolve({ ok: false, error: 'unsupported' });
   const id = ++uiSeq;
   return new Promise((resolve) => {
@@ -472,7 +526,7 @@ function pushAsk() {
 }
 let uiBusy = false, uiIdleTicks = 0, uiNotWaiting = 0;
 async function uiTick(force) {
-  if (uiBusy || process.platform !== 'win32' || cfg.cindyUiBridge === false) return;
+  if (uiBusy || !uiEnabled()) return;
   const waiting = agentSnap && (agentSnap.state === 'waiting-approval' || agentSnap.state === 'waiting-input') && (!agentSnap.source || agentSnap.source === 'cindy');
   if (!waiting && !force) {
     // Cindy 不再“等你”了（在 Cindy 里处理掉了 / 超时）：连续两次确认后收起卡片
@@ -487,7 +541,7 @@ async function uiTick(force) {
     if (r.ok) {
       const items = (r.items || []).slice(0, 3).map((x) => {
         const ref = 'ui:' + x.sig;
-        const base = { ref, companionId: 'ui', who: 'Cindy', kind: x.kind };
+        const base = { ref, companionId: 'ui', who: 'Cindy', kind: x.kind, exp: process.platform !== 'win32' };
         return x.kind === 'question'
           ? { ...base, questions: [{ question: String(x.question || '').slice(0, 300), header: String(x.header || '').slice(0, 30), multiSelect: false, options: (x.options || []).slice(0, 8).map((o) => ({ label: String(o.label || '').slice(0, 80), description: String(o.description || '').slice(0, 160) })) }] }
           : { ...base, title: String(x.title || '').slice(0, 120), tool: String(x.title || '').slice(0, 120), body: String(x.body || '').slice(0, 1500), allowHere: true };

@@ -717,6 +717,7 @@ function drawAsk(force) {
     askEl.appendChild(mk('div', 'a-q', it.title || '有一个请求在等你'));
     const row = mk('div', 'a-row'); row.appendChild(toCindy()); askEl.appendChild(row);
   }
+  if (it.exp) askEl.appendChild(mk('div', 'a-n', '实验功能：这个系统上的“读取并点击 Cindy 界面”没有经过真机验证，点不到时请回 Cindy 里处理。'));
   if (it.stale) askEl.appendChild(mk('div', 'a-n', '这条请求不在 Cindy 当前画面（可能切了项目 / 对话或最小化了）。点按钮会先带你回去。'));
   if (askItems.length > 1) askEl.appendChild(mk('div', 'a-n', '还有 ' + (askItems.length - 1) + ' 个请求在等你'));
   placeAsk();
