@@ -217,6 +217,7 @@ async function relayLoop() {
       const r = await cindy.node.request({ method: 'relay/poll', params: {}, timeoutMs: 100000 });
       if (!r.ok) { await sleep(4000); continue; }
       const job = r.result;
+      if (!r.result) { await sleep(300); continue; }   // 空轮询：稍等再来，避免宿主异常时空转占满 CPU
       if (job && job.event === 'state') { bc.postMessage({ type: 'state', state: job.state }); continue; }   // 桌面版改了设置 -> 通知页面
       if (job && job.event === 'act') { bc.postMessage({ type: 'act', act: job.act }); continue; }
       if (job && job.event === 'media') { bc.postMessage({ type: 'media', media: job.media }); continue; }          // 桌面版在听歌/看视频 -> 页面里的桌宠也跟着          // 桌面版做了动作 -> 页面里的桌宠也做

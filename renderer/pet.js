@@ -541,13 +541,13 @@ function danceStep(t, dt) {
     if (quietMs < 500 && bass > bassAvg * 1.12 + 10 && bass > 70 && t - lastBeat > 230) onBeat(Math.min(1, (bass - bassAvg) / 70 + 0.3), t);
     else if (quietMs < 500) beatEnv = Math.max(beatEnv, Math.min(0.3, all / 255 * 0.5));   // 没有明显鼓点时随整体音量轻轻起伏
   } else if (t > fakeNext) {                                                                // 没有系统声音：固定节奏（约 104 拍/分钟）
-    fakeNext = t + 575; onBeat(0.5, t); curBpm = 104;
+    fakeNext = t + 575; onBeat(0.2, t); curBpm = 104;
   }
   beatEnv *= Math.exp(-dt / 150);
   sway += (swayTarget - sway) * (1 - Math.exp(-dt / 110)); swayTarget *= Math.exp(-dt / 600);
   const sc = cfg.scale || 1;
   sprite.style.transformOrigin = '50% 96%';
-  sprite.style.transform = `translateX(-50%) translateY(${(-beatEnv * 10 * sc).toFixed(1)}px) rotate(${sway.toFixed(2)}deg) scale(${(1 - beatEnv * 0.015).toFixed(3)}, ${(1 + beatEnv * 0.03).toFixed(3)})`;
+  sprite.style.transform = `translateX(-50%) translateY(${(-beatEnv * (audio ? 7 : 3) * sc).toFixed(1)}px) rotate(${sway.toFixed(2)}deg) scale(${(1 - beatEnv * 0.015).toFixed(3)}, ${(1 + beatEnv * 0.03).toFixed(3)})`;
   danced = true;
   if (t - lastReport > 4000) { lastReport = t; window.pet.reportBeat({ bpm: curBpm, real: !!audio }); }        // 告诉 Cindy 里的桌宠页同一个速度
 }

@@ -5,8 +5,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: transparen
 #sprite.dock-l { left: 0; transform: none; }
 #sprite.dock-r { left: auto; right: 0; transform: scaleX(-1); }
 #sprite.flip { transform: translateX(-50%) scaleX(-1); }
-#sprite.bob { animation: bob .32s ease-in-out infinite alternate; }
-@keyframes bob { from { margin-bottom: 0; } to { margin-bottom: 5px; } }
+#sprite.bob { animation: bob .45s ease-in-out infinite alternate; }
+@keyframes bob { from { margin-bottom: 0; } to { margin-bottom: 3px; } }
 #sprite.breath { animation: breath 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
 @keyframes breath { 0%,100% { transform: translateX(-50%) scaleY(1); } 50% { transform: translateX(-50%) scaleY(1.012); } }
 

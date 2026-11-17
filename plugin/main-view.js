@@ -105,7 +105,8 @@ function render() {
   const im = cur(); if (!im) return;
   const ref = pose === 'walk' ? im.bh : imgs.idle.bh; const s = targetH() / ref;
   const w = im.w * s, h = im.h * s;
-  sprite.src = im.src; sprite.style.width = w + 'px'; sprite.style.height = h + 'px';
+  if (sprite.getAttribute('data-k') !== im.src) { sprite.src = im.src; sprite.setAttribute('data-k', im.src); }   // 同一张图不重复赋值，避免 16ms 一次地重解码
+  const ws = w + 'px', hs = h + 'px'; if (sprite.style.width !== ws) sprite.style.width = ws; if (sprite.style.height !== hs) sprite.style.height = hs;
   sprite.style.transformOrigin = '50% 100%';
   lastW = w; sprite.style.transform = xform();
   placeBubble(w, h, s, im);
@@ -375,6 +376,7 @@ function buildBar() {
   $('#sync').onchange = (e) => { S.sync = e.target.checked; saveState(); if (S.sync) { say('好，设置和我的话都会同步给桌面版。'); pingDesktop(); } };
 }
 function markOutfit() { document.querySelectorAll('#outfits .chip').forEach((b) => b.classList.toggle('on', b.dataset.id === S.outfit)); }
+let offlineN = 0;
 async function pingDesktop() {
   const r = await request({ type: 'status' }, 10000);
   const dot = $('#dot'); const on = !!(r && r.desktopOnline);
@@ -383,6 +385,9 @@ async function pingDesktop() {
     else if ((S.sharedAt || 0) > r.desktop.at) pushShared();
   }
   if (on && S.sync && r.desktop) applyMedia(r.desktop.media, r.desktop.bpm);          // 页面刚打开 / 错过推送时，也能追上桌面版正在听什么
+  offlineN = on ? 0 : offlineN + 1;
+  $('#dl').classList.toggle('hidden', on || (offlineN < 2 && S.dlSeen));       // 首次打开且没检测到桌面版：马上提示下载；之后连续两次没连上才再提示，避免偶发抖动
+  if (!on && !S.dlSeen) { S.dlSeen = true; saveState(); }
   dot.className = 'dot ' + (on ? 'on' : 'off'); dot.title = on ? '桌面版在线' : '未检测到桌面版';
   $('#hint').textContent = on
     ? '桌面版在线。想让它用 Cindy 的模型聊天：桌面版右键 → 设置 → 对话来源选“Cindy 模型”（需保持本页面打开）。'
