@@ -709,10 +709,10 @@ function drawAsk(force) {
     if (it.title || it.tool) askEl.appendChild(mk('div', 'a-q', it.tool || it.title));
     if (it.body) askEl.appendChild(mk('div', 'a-body', it.body));
     const row = mk('div', 'a-row');
-    if (it.allowHere) { const ok = mk('button', 'a-go', '允许'); ok.onclick = () => askSend(it, { answer: { kind: it.kind, decision: 'allow' } }); row.appendChild(ok); }
+    if (it.allowHere) { const ok = mk('button', 'a-go', it.companionId === 'ui' ? '允许一次' : '允许'); ok.onclick = () => askSend(it, { answer: { kind: it.kind, decision: 'allow' } }); row.appendChild(ok); }
     const no = mk('button', '', '拒绝'); no.onclick = () => askSend(it, { answer: { kind: it.kind, decision: 'deny' } }); row.appendChild(no);
     row.appendChild(toCindy()); askEl.appendChild(row);
-    askEl.appendChild(mk('div', 'a-n', it.allowHere ? '点“允许”后 Cindy 会再弹一个确认框，在那里确认才生效。' : '这条请求内容太长或类型特殊，只能在 Cindy 里允许。'));
+    askEl.appendChild(mk('div', 'a-n', it.companionId === 'ui' ? '点按钮会直接替你点 Cindy 里对应的按钮。' : it.allowHere ? '点“允许”后 Cindy 会再弹一个确认框，在那里确认才生效。' : '这条请求内容太长或类型特殊，只能在 Cindy 里允许。'));
   } else {
     askEl.appendChild(mk('div', 'a-q', it.title || '有一个请求在等你'));
     const row = mk('div', 'a-row'); row.appendChild(toCindy()); askEl.appendChild(row);

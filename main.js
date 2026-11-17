@@ -411,8 +411,89 @@ function applyFollow() {
 }
 
 // ---------- 本地接口（Cindy / 其他程序联动）----------
-let askItems = [];
-ipcMain.handle('ask:answer', async (_e, p) => {            // 桌宠上的回答 -> 转给 Cindy 插件（插件再交给伙伴）
+
+// ---------- 项目里的提问 / 命令确认：读取 Cindy 窗口（仅 Windows），桌宠上点选后代为点击 ----------
+// Cindy 没有把“你自己对话里的提问/确认”开放给插件，所以这里用 Windows 界面自动化读 Cindy 窗口里的卡片文字，并在你点桌宠时去点对应按钮。
+// 只在 Cindy 报告“等你确认/等你回答”时才读；只点名称匹配的按钮；点之前会重读一遍，内容变了就不点。可在配置里把 cindyUiBridge 设为 false 关闭。
+let askPlugin = [], askUi = [], askItems = [];
+const uiMap = new Map();
+let uiProc = null, uiBuf = '', uiSeq = 0; const uiWait = new Map();
+function uiScriptPath() {
+  const dst = path.join(app.getPath('userData'), 'cindy-ui.ps1');
+  try { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.writeFileSync(dst, fs.readFileSync(path.join(__dirname, 'scripts', 'cindy-ui.ps1'))); } catch (e) { console.error('cindy-ui copy', e.message); }
+  return dst;
+}
+function uiStart() {
+  if (uiProc || process.platform !== 'win32') return;
+  try {
+    uiProc = require('child_process').spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', uiScriptPath()], { windowsHide: true });
+  } catch (e) { uiProc = null; return; }
+  uiProc.stdout.setEncoding('utf8');
+  uiProc.stdout.on('data', (d) => {
+    uiBuf += d; let i;
+    while ((i = uiBuf.indexOf('\n')) >= 0) {
+      const line = uiBuf.slice(0, i).trim(); uiBuf = uiBuf.slice(i + 1); if (!line) continue;
+      try { const m = JSON.parse(line); const w = uiWait.get(m.id); if (w) { uiWait.delete(m.id); clearTimeout(w.t); w.resolve(m); } } catch {}
+    }
+  });
+  uiProc.on('exit', () => { uiProc = null; for (const [, w] of uiWait) { clearTimeout(w.t); w.resolve({ ok: false, error: 'bridge exited' }); } uiWait.clear(); });
+  uiProc.stderr.on('data', () => {});
+}
+function uiStop() { if (uiProc) { try { uiProc.kill(); } catch {} uiProc = null; } }
+function uiCall(cmd) {
+  uiStart(); if (!uiProc) return Promise.resolve({ ok: false, error: 'unsupported' });
+  const id = ++uiSeq;
+  return new Promise((resolve) => {
+    const t = setTimeout(() => { uiWait.delete(id); resolve({ ok: false, error: 'timeout' }); }, 8000);
+    uiWait.set(id, { resolve, t });
+    try { uiProc.stdin.write(JSON.stringify({ ...cmd, id }) + '\n'); } catch { uiWait.delete(id); clearTimeout(t); resolve({ ok: false, error: 'write' }); }
+  });
+}
+function pushAsk() {
+  askItems = [...askPlugin, ...askUi]; toPet('ask:update', askItems);
+  if (askItems.length && win && !win.isVisible() && !manualHidden) showPet();
+}
+let uiBusy = false, uiIdleTicks = 0;
+async function uiTick(force) {
+  if (uiBusy || process.platform !== 'win32' || cfg.cindyUiBridge === false) return;
+  const waiting = agentSnap && (agentSnap.state === 'waiting-approval' || agentSnap.state === 'waiting-input') && (!agentSnap.source || agentSnap.source === 'cindy');
+  if (!waiting && !force && !askUi.length) { uiIdleTicks = 0; return; }
+  uiBusy = true;
+  try {
+    const r = await uiCall({ cmd: 'scan' });
+    if (process.env.PET_UI_DEBUG) console.log('uiscan', JSON.stringify(r).slice(0, 300));
+    if (r.ok) {
+      const items = (r.items || []).slice(0, 3).map((x) => {
+        const ref = 'ui:' + x.sig;
+        const base = { ref, companionId: 'ui', who: 'Cindy', kind: x.kind };
+        return x.kind === 'question'
+          ? { ...base, questions: [{ question: String(x.question || '').slice(0, 300), header: String(x.header || '').slice(0, 30), multiSelect: false, options: (x.options || []).slice(0, 8).map((o) => ({ label: String(o.label || '').slice(0, 80), description: String(o.description || '').slice(0, 160) })) }] }
+          : { ...base, title: String(x.title || '').slice(0, 120), tool: String(x.title || '').slice(0, 120), body: String(x.body || '').slice(0, 1500), allowHere: true };
+      });
+      const sig = JSON.stringify(items);
+      if (sig !== JSON.stringify(askUi)) { askUi = items; uiMap.clear(); for (const x of r.items || []) uiMap.set('ui:' + x.sig, x); pushAsk(); }
+      uiIdleTicks = items.length ? 0 : uiIdleTicks + 1;
+    }
+  } finally { uiBusy = false; }
+  if (!waiting && uiIdleTicks > 3 && !askUi.length) uiStop();       // 不用时把常驻的 PowerShell 关掉
+}
+setInterval(() => uiTick(false), 1500);
+async function uiAnswer(p) {
+  const x = uiMap.get(p.ref); if (!x) return { ok: false, error: '这条请求已经不在了。' };
+  if (p.open) { await uiCall({ cmd: 'focus' }); return { ok: true }; }
+  const a = p.answer || {}; let steps = [];
+  if (x.kind === 'permission') steps = [{ target: a.decision === 'allow' ? 'allow' : 'deny' }];
+  else if (x.kind === 'question') steps = ((a.answers && a.answers[0] && a.answers[0].choices) || []).map((l) => ({ target: 'option', label: l }));
+  if (!steps.length) return { ok: false, error: '没有选择。' };
+  for (const s of steps) {
+    const r = await uiCall({ cmd: 'click', sig: x.sig, ...s });
+    if (!r.ok) return { ok: false, error: r.error === 'changed' ? '这条请求刚刚变了，请看最新的。' : '没点到 Cindy 里的按钮，请回 Cindy 处理。' };
+  }
+  askUi = askUi.filter((i) => i.ref !== p.ref); pushAsk(); setTimeout(() => uiTick(true), 700);
+  return { ok: true };
+}
+ipcMain.handle('ask:answer', async (_e, p) => {            // 桌宠上的回答 -> 项目里的卡片（界面桥）或转给 Cindy 插件（再交给伙伴）
+  if (p && typeof p.ref === 'string' && uiMap.has(p.ref)) return uiAnswer(p);
   try {
     const r = await fetch((cfg.relayUrl || 'http://127.0.0.1:47832').replace(/\/+$/, '') + '/answer', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Desk-Pet': '1' }, body: JSON.stringify(p || {}), signal: AbortSignal.timeout(4000) });
@@ -484,10 +565,9 @@ function startServer() {
         broadcast('agent:update', agentSnap); updateTray();
         return reply(200, { ok: true });
       } else if (req.url === '/ask') {                        // 来自 Cindy 插件：伙伴的提问 / 确认（桌宠上弹出，可直接作答）
-        const items = Array.isArray(j.items) ? j.items.slice(0, 3) : [];
-        askItems = items; toPet('ask:update', items);
-        if (items.length && win && !win.isVisible() && !manualHidden) showPet();
-        return reply(200, { ok: true, count: items.length });
+        askPlugin = (Array.isArray(j.items) ? j.items : []).filter((i) => i && i.companionId !== 'ui' && !String(i.ref || '').startsWith('ui:')).slice(0, 3);
+        pushAsk();
+        return reply(200, { ok: true, count: askPlugin.length });
       } else if (req.url === '/state') {                      // 来自 Cindy 插件页面的设置同步
         const at = +j.at || Date.now();
         if (at < (cfg.sharedAt || 0)) return reply(200, { ok: true, ignored: true });
@@ -542,4 +622,4 @@ else {
   });
 }
 app.on('window-all-closed', (e) => { if (!quitting) e.preventDefault?.(); });
-app.on('before-quit', () => { quitting = true; if (mediaWatcher) { mediaWatcher.stop(); mediaWatcher = null; } });
+app.on('before-quit', () => { quitting = true; uiStop(); if (mediaWatcher) { mediaWatcher.stop(); mediaWatcher = null; } });
