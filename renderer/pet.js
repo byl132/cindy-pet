@@ -659,6 +659,18 @@ function careNow() {
 
 // ---------- 伙伴的提问 / 确认：在桌宠上弹出，带内容和选项，可直接点选 ----------
 const askEl = $('#ask'); let askItems = [], askSig = '', askSel = {};
+// 桌宠站在屏幕边缘时，窗口有一部分在屏幕外，居中的选项卡会被切掉：弹出时把窗口临时挪进屏幕，收起后挪回去
+let askShift = 0;
+function keepAskOnScreen(show) {
+  if (!work) return;
+  if (!show) { if (askShift) { winX += askShift; askShift = 0; window.pet.setPos(winX, winY); } return; }
+  if (askShift) return;
+  const cardL = winX + (WIN_W - 360) / 2, cardR = cardL + 360, M = 8;
+  let shift = 0;
+  if (cardR > work.x + work.width - M) shift = cardR - (work.x + work.width - M);
+  else if (cardL < work.x + M) shift = cardL - (work.x + M);
+  if (Math.abs(shift) >= 1) { askShift = Math.round(shift); winX -= askShift; window.pet.setPos(winX, winY); }
+}
 function placeAsk() {
   if (askEl.classList.contains('hidden')) return;
   const top = spriteTop();
@@ -678,8 +690,9 @@ function drawAsk(force) {
   const sig = JSON.stringify(askItems);
   if (!force && sig === askSig) return; askSig = sig;
   askEl.textContent = '';
-  if (!askItems.length) { askEl.classList.add('hidden'); askSel = {}; return; }
+  if (!askItems.length) { askEl.classList.add('hidden'); askSel = {}; keepAskOnScreen(false); return; }
   const it = askItems[0];
+  keepAskOnScreen(true);
   askEl.classList.remove('hidden'); bubble.classList.add('hidden');
   walking = null; if (sleeping) wake(true); lastInteract = now();
   const k = it.companionId + '|' + it.ref; if (!askSel[k]) askSel = { [k]: it.questions ? it.questions.map(() => []) : [] };
