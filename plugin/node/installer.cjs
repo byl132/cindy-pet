@@ -100,10 +100,13 @@ async function doInstall() {
   const plat = process.platform, file = FILES[plat];
   if (!file) throw new Error('这个系统暂时没有桌面版安装包');
   cancelled = false;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cindy-pet-'));
-  const tmp = path.join(dir, file);
-  setJob({ state: 'downloading', pct: 0, error: '', note: '正在下载桌面版…' });
-  const size = await download(BASE + file, tmp, (p) => setJob({ pct: p }));
+  let dir = null, tmp = path.join(__dirname, '..', 'native', file), size;
+  if (fs.existsSync(tmp)) { size = fs.statSync(tmp).size; }          // 安装包已经随插件带来了：不用联网下载
+  else {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cindy-pet-')); tmp = path.join(dir, file);
+    setJob({ state: 'downloading', pct: 0, error: '', note: '正在下载桌面版…' });
+    size = await download(BASE + file, tmp, (p) => setJob({ pct: p }));
+  }
   if (cancelled) throw new Error('已取消');
   if (size < MIN_BYTES[plat]) throw new Error('下载的文件太小，可能不是安装包，请稍后重试');
   const head = Buffer.alloc(4); const fd = fs.openSync(tmp, 'r'); fs.readSync(fd, head, 0, 4, 0); fs.closeSync(fd);
@@ -125,7 +128,7 @@ async function doInstall() {
     await new Promise((resolve, reject) => execFile('ditto', ['-x', '-k', tmp, dst], { timeout: 120000 }, (e) => e ? reject(e) : resolve()));
     await run('xattr', ['-dr', 'com.apple.quarantine', path.join(dst, 'Cindy桌宠.app')]);
   }
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  if (dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
   setJob({ state: 'starting', note: '正在启动桌面版…' });
   const exe = await findExe();
   if (!exe) throw new Error('安装完成但没找到桌面版程序，请到 GitHub 页面手动安装');

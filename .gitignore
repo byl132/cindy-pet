@@ -8,3 +8,4 @@ __pycache__
 *.cindy
 *.cshare
 .DS_Store
+plugin/native/
