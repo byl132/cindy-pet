@@ -60,25 +60,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: out-linux, path: out/*, compression-level: 0 }
   plugin:
-    # 插件包里带上 Windows 安装包（装插件就带上，首次使用时直接安装，不用联网下载）
-    needs: [win]
-    if: ${{ !cancelled() && (needs.win.result == 'success' || needs.win.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        if: ${{ github.event.inputs.carry_from == '' }}
-        with: { name: out-win, path: plugin/native }
-      - name: 只更新插件时，沿用上个版本的 Windows 安装包
-        if: ${{ github.event.inputs.carry_from != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CARRY: ${{ github.event.inputs.carry_from }}
-        run: |
-          mkdir -p plugin/native
-          gh release download "$CARRY" -p 'Cindy-Pet-Setup-win-x64.exe' -D plugin/native
       - run: |
-          ls -la plugin/native
           mkdir -p out
           cd plugin && zip -qrD ../out/cindy-desk-pet.cindy . -x '*.cindy'
       - uses: actions/upload-artifact@v4
