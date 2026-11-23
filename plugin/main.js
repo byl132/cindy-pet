@@ -189,6 +189,7 @@ bc.onmessage = async ({ data }) => {
     if (data.type === 'chat') result = await askCindy(data);
     else if (data.type === 'desktop') result = await desktop(String(data.path || ''), data.body);
     else if (data.type === 'status') result = await status();
+    else if (data.type === 'install-state' || data.type === 'install' || data.type === 'install-cancel' || data.type === 'launch') { const r = await cindy.node.request({ method: { 'install-state': 'desk/install-state', 'install': 'desk/install', 'install-cancel': 'desk/install-cancel', 'launch': 'desk/launch' }[data.type], params: {}, timeoutMs: 15000 }); result = r.ok ? r.result : { ok: false, error: r.message }; }
     else if (data.type === 'state-set') result = await stateSet(data.state);
     else if (data.type === 'act-set') { const r = await cindy.node.request({ method: 'act/send', params: { act: data.act }, timeoutMs: 6000 }); result = r.ok ? r.result : { ok: false, error: r.message }; }
     else if (data.type === 'dashboard') result = await dashboard();
@@ -319,6 +320,15 @@ cindy.onHostMessage(async function (msg) {
     }
     if (msg.tool === 'pet_show') {
       const d = await desktop(a.visible === false ? '/hide' : '/show', {});
+      if (!d.ok && a.visible !== false) {                         // 桌面版没在运行：没装就后台下载安装，装了就直接启动
+        const st = await cindy.node.request({ method: 'desk/install-state', params: {}, timeoutMs: 15000 });
+        const info = st.ok ? st.result : null;
+        if (info && info.supported && !info.online) {
+          if (info.installed) { await cindy.node.request({ method: 'desk/launch', params: {}, timeoutMs: 15000 }); return ok(msg, { desktop: false, started: true, note: '桌面版没在运行，已帮你启动，几秒后会出现。' }); }
+          await cindy.node.request({ method: 'desk/install', params: {}, timeoutMs: 15000 });
+          return ok(msg, { desktop: false, installing: true, note: '还没安装桌面版，已经在后台下载安装（约 150MB），装好会自动启动。进度可在 Cindy 的“桌宠”页面看到。' });
+        }
+      }
       return ok(msg, { desktop: !!d.ok, desktopError: d.ok ? undefined : d.error });
     }
     if (msg.tool === 'pet_status') return ok(msg, await status());
