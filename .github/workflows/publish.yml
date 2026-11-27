@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           mkdir -p out
-          cd plugin && zip -qrD ../out/cindy-desk-pet.cindy . -x '*.cindy'
+          cd plugin && zip -qrD ../out/qpet-desk-pet.cindy . -x '*.cindy'
       - uses: actions/upload-artifact@v4
         with: { name: out-plugin, path: out/*, compression-level: 0 }
   publish:
@@ -85,11 +85,11 @@ jobs:
           if [ -n "$CARRY" ]; then
             mkdir -p carry
             gh release download "$CARRY" -D carry
-            rm -f carry/cindy-desk-pet.cindy
+            rm -f carry/cindy-desk-pet.cindy carry/qpet-desk-pet.cindy
             for f in carry/*; do [ -e "out/$(basename "$f")" ] || cp "$f" out/; done
           fi
           ls -la out
-          NOTES="Cindy 桌宠 ${TAG}。Windows：Cindy-Pet-Setup-win-x64.exe；macOS：dmg 或 zip（未签名，首次打开需在“隐私与安全性”里点“仍要打开”）；Linux：AppImage 或 deb；Cindy 插件：cindy-desk-pet.cindy。"
+          NOTES="Cindy 桌宠 ${TAG}。Windows：Cindy-Pet-Setup-win-x64.exe；macOS：dmg 或 zip（未签名，首次打开需在“隐私与安全性”里点“仍要打开”）；Linux：AppImage 或 deb；Cindy 插件：qpet-desk-pet.cindy。"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/* --clobber
           else
