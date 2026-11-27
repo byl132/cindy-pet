@@ -126,7 +126,7 @@ function render() {
   sprite.classList.toggle('dock-t', dock === 'top');
   sprite.classList.toggle('dock-l', dock === 'left');
   sprite.classList.toggle('dock-r', dock === 'right');
-  placeBubble(); if (chatOpen) placeChat(); if (typeof placeAsk === 'function') placeAsk();
+  placeBubble(); if (chatOpen) placeChat(); if (typeof placeAsk === 'function') placeAsk(); if (typeof updCardPos === 'function') updCardPos();
 }
 function setPose(p, ms = 0) {
   tempPose = ms ? p : null;
@@ -142,7 +142,10 @@ function placeBubble() {
     return;
   }
   bubble.classList.remove('below'); bubble.style.top = '';
-  bubble.style.bottom = (WIN_H - top + 14) + 'px';
+  let bottom = WIN_H - top + 14;
+  // 桌宠被拖到屏幕下方/贴底时，头顶会超出窗口顶部范围，气泡会被窗口裁掉：改贴窗口顶部显示，不再消失
+  if (bottom + 60 > WIN_H || top < 80) bottom = WIN_H - 60;
+  bubble.style.bottom = Math.max(8, bottom) + 'px';
   if (dock === 'left' || dock === 'right') {        // 贴边时气泡跟着露出来的身体走，别超出窗口
     const r = sprite.getBoundingClientRect(); const half = 150;
     bubble.style.left = Math.max(half, Math.min(WIN_W - half, r.left + r.width / 2)) + 'px';
@@ -752,6 +755,63 @@ onEvt('menu:action', async (a, v) => {
   else if (a === 'role') { cfg = await window.pet.getConfig(); history.length = 0; logEl.innerHTML = ''; setPose('talk', 3000); say('我现在是「' + activeRole().name + '」啦。'); }
 });
 onEvt('pet:say', ({ text, mood }) => { wake(true); lastInteract = now(); reactMood(mood || 'talk', 6000); say(text, 9000); });
+onEvt('update:available', (info) => { try { drawUpdateCard(info); } catch (e) { console.error(e); } });
+onEvt('update:progress', (st) => { try { updProgress(st); } catch (e) { console.error(e); } });
+
+// ---------- 更新提醒卡片：自动下载，进度实时刷新；下完后一键更新 ----------
+// 卡片跟桌宠位置走（在头顶上方），而不是钉死在屏幕右下角，避免挡住桌宠本体
+function updCardPos() {
+  const top = spriteTop();
+  const card = document.getElementById('upd-card');
+  if (!card) return;
+  // 默认在桌宠头顶上方；如果桌宠贴在屏幕底/被拖到屏幕外导致头顶超出窗口，则改贴窗口顶部，保证卡片始终可见
+  const bottom = WIN_H - top + 14;
+  if (bottom + 150 > WIN_H || top < 160) { card.style.bottom = 'auto'; card.style.top = '8px'; }
+  else { card.style.top = 'auto'; card.style.bottom = bottom + 'px'; }
+}
+function drawUpdateCard(info) {
+  const old = document.getElementById('upd-card'); if (old) old.remove();
+  const card = mk('div', ''); card.id = 'upd-card';
+  card.style.cssText = 'position:absolute;z-index:9999;display:flex;flex-direction:column;gap:6px;padding:10px 14px;border-radius:12px;background:rgba(40,44,74,.92);color:#fff;font-size:13px;width:230px;box-shadow:0 4px 16px rgba(0,0,0,.35);left:50%;transform:translateX(-50%);';
+  const t = mk('div', '', `桌宠有新版本 v${info.latest}（当前 v${info.current}）`);
+  t.style.cssText = 'font-weight:600;';
+  card.appendChild(t);
+  // 进度条
+  const barWrap = mk('div', ''); barWrap.style.cssText = 'height:6px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden;';
+  const bar = mk('div', ''); bar.id = 'upd-bar'; bar.style.cssText = 'height:100%;width:0%;background:#4f7cff;transition:width .3s;';
+  barWrap.appendChild(bar); card.appendChild(barWrap);
+  const stTxt = mk('div', '', '正在下载…'); stTxt.id = 'upd-st'; stTxt.style.cssText = 'font-size:11px;opacity:.85;';
+  card.appendChild(stTxt);
+  const row = mk('div', ''); row.style.cssText = 'display:flex;gap:8px;';
+  const mkBtn = (label, bg, cb) => { const b = mk('button', '', label); b.style.cssText = `flex:1;padding:4px 8px;border:0;border-radius:8px;background:${bg};color:#fff;font-size:12px;cursor:pointer;`; b.onclick = cb; return b; };
+  const goBtn = mkBtn('去下载', '#4f7cff', () => { window.pet.updateOpen(info.url); card.remove(); });
+  goBtn.id = 'upd-go';
+  row.appendChild(goBtn);
+  row.appendChild(mkBtn('跳过', 'rgba(255,255,255,.18)', () => { window.pet.updateSkip(info.latest); card.remove(); }));
+  card.appendChild(row);
+  const close = mk('div', '✕'); close.style.cssText = 'position:absolute;top:2px;right:6px;cursor:pointer;opacity:.6;font-size:11px;'; close.onclick = () => card.remove(); card.appendChild(close);
+  document.body.appendChild(card);
+  updCardPos();
+  setTimeout(() => { if (card.isConnected) card.remove(); }, 60000);
+}
+function updProgress(st) {
+  const bar = document.getElementById('upd-bar'), stEl = document.getElementById('upd-st'), card = document.getElementById('upd-card');
+  if (!card) return;
+  updCardPos();
+  if (bar && st.pct != null) bar.style.width = Math.min(100, st.pct) + '%';
+  if (stEl) {
+    if (st.downloaded) stEl.textContent = '下载完成，可以更新了';
+    else if (st.error) stEl.textContent = '下载失败：' + st.error;
+    else if (st.downloading) stEl.textContent = `正在下载 ${st.pct}%（${Math.round((st.got||0)/1048576)} / ${Math.round((st.total||0)/1048576)} MB）`;
+  }
+  if (st.downloaded) {
+    const go = document.getElementById('upd-go');
+    if (go) { go.textContent = '立即更新'; go.style.background = '#38b03a'; }
+    go.onclick = async () => { go.textContent = '安装中…'; await window.pet.updateInstall(); };
+    // 重置自动收起计时：下载完多给 5 分钟
+    setTimeout(() => { if (card.isConnected) card.remove(); }, 300000);
+  }
+}
 onEvt('config:changed', (c) => { const keep = cfg ? cfg.state : null; cfg = c; if (keep) cfg.state = { ...c.state, mood: keep.mood, energy: keep.energy }; render(); });
 onEvt('state:changed', (st) => { if (!cfg) return; cfg.state = { ...st, mood: cfg.state.mood, energy: cfg.state.energy }; });
 

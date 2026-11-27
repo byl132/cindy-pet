@@ -38,6 +38,8 @@ code{background:#0f0e20;padding:1px 5px;border-radius:4px}
 <div class="row"><div><label>你的称呼</label><input id="userName"></div><div><label>关怀提醒间隔（分钟）</label><input id="care" type="number" min="5"></div></div>
 <div class="row"><div><label>大小（0.5 – 1.4，也可在桌宠身上滚轮或右键 → 大小）</label><input id="scale" type="number" step="0.05" min="0.5" max="1.4"></div><div></div></div>
 <div class="chk"><input id="walk" type="checkbox"><span>允许自动在屏幕底部走动</span></div>
+<div class="chk"><input id="autoUpdate" type="checkbox"><span>启动时自动检查新版本（有新版时桌宠提醒并弹出通知）</span></div>
+<div class="row"><div><button id="checkNow" class="gray">立即检查更新</button><span id="updMsg" style="margin-left:8px"></span></div><div></div></div>
 
 <h2>Cindy / 外部联动（本地通知服务）</h2>
 <div class="row"><div><label>端口</label><input id="port" type="number"></div><div><label>令牌 Token（可空）</label><input id="token"></div></div>

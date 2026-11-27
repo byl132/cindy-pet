@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen, session, desktopCapturer, dialog, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage, screen, session, desktopCapturer, dialog, systemPreferences, Notification, shell } = require('electron');
 const uiCards = require('./ui-cards.js');
 const path = require('path');
 const fs = require('fs');
@@ -42,8 +42,164 @@ const DEFAULT_CONFIG = {
   followCindy: false, followProcess: process.platform === 'win32' ? 'Cindy.exe' : (IS_LINUX ? 'cindy' : 'Cindy'),
   autoPeek: false, gravity: false, dock: null, sharedAt: 0, mediaSense: true, musicDance: true,          // autoPeek 默认关闭：不要让桌宠自己跑去趴边
   state: { mood: 70, energy: 80, firstDay: today(), ruaTotal: 0, chatTotal: 0, focusDone: 0, moodLog: [] },
-  reminders: []
+  reminders: [],
+  autoUpdateCheck: true, updateSkip: ''            // 自动检查更新；updateSkip：用户点了“本次跳过”的版本号
 };
+
+// ---------- 检查更新（GitHub Releases）：托盘手动检查 + 启动后自动检查，有新版时桌宠播报 + 系统通知 ----------
+const UPDATE_REPO = 'byl132/cindy-pet';
+let updateBusy = false, lastUpdateInfo = null;
+function cmpVer(a, b) {
+  const pa = String(a || '').replace(/^v/, '').split('.').map(Number), pb = String(b || '').replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x > y ? 1 : -1; }
+  return 0;
+}
+async function checkUpdate(manual) {
+  if (updateBusy) return { busy: true };
+  updateBusy = true;
+  try {
+    const r = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+      headers: { 'User-Agent': 'cindy-desktop-pet', Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rel = await r.json();
+    const remote = String(rel.tag_name || '').replace(/^v/, '');
+    const local = app.getVersion();
+    const newer = cmpVer(remote, local) > 0;
+    const info = { current: local, latest: remote, newer, url: rel.html_url, notes: String(rel.body || '').slice(0, 600), manual: !!manual,
+      assets: (rel.assets || []).map((a) => ({ name: a.name, size: a.size, browser_download_url: a.browser_download_url })) };
+    lastUpdateInfo = info;
+    if (newer) {
+      plog('[update] 有新版本', local, '->', remote);
+      // 桌宠播报 + 显示按钮；用户点“本次跳过”的版本不再自动提醒（手动检查仍然提醒）
+      if (manual || cfg.updateSkip !== remote) {
+        toPet('pet:say', { text: `有新版本 v${remote} 了！我先帮你把安装包下好，下完就可以直接更新～`, mood: 'happy' });
+        toPet('update:available', info);
+        showUpdateNotification(info);
+        // 发现新版本即自动后台下载（多镜像回退）；下载失败会回退提示手动下载
+        downloadUpdate(info).catch((e) => plog('[update] 后台下载异常', e.message));
+      }
+    } else if (manual) {
+      toPet('pet:say', { text: `已经是最新版本 v${local} 了，不用担心～`, mood: 'talk' });
+    }
+    return info;
+  } catch (e) {
+    plog('[update] 检查失败', e.message);
+    if (manual) toPet('pet:say', { text: '检查更新没成功，可能是网络问题，稍后再试试吧。', mood: 'comfort' });
+    return { error: String(e.message || e) };
+  } finally { updateBusy = false; }
+}
+function showUpdateNotification(info) {
+  try {
+    if (!Notification.isSupported()) return;
+    const n = new Notification({
+      title: `Cindy 桌宠有新版本 v${info.latest}`,
+      body: info.downloaded ? `安装包已下载到 ${info.file}，退出时自动安装。` : (info.downloading ? `正在后台下载安装包（${info.pct}%）…` : `当前 v${info.current}。点击通知打开下载页。`),
+      icon: path.join(__dirname, 'build', 'icon.png')
+    });
+    n.on('click', () => { if (info.downloaded && info.file) shell.openPath(path.dirname(info.file)); else shell.openExternal(info.url); });
+    n.show();
+  } catch {}
+}
+ipcMain.handle('update:check', (_e, manual) => checkUpdate(!!manual));
+ipcMain.handle('update:skip', (_e, ver) => { cfg.updateSkip = String(ver || ''); saveConfig(); });
+ipcMain.handle('update:open', (_e, url) => { try { shell.openExternal(url || (lastUpdateInfo && lastUpdateInfo.url) || `https://github.com/${UPDATE_REPO}/releases/latest`); } catch {} });
+
+// ---------- 自动下载安装包：GitHub 直连（重定向到 release-assets CDN，国内可达）+ 断点续传 + 失败重试 ----------
+// 实测：公共 ghproxy 镜像全部挂了/反爬，直连跟随重定向后反而最快；支持 Range 断点续传，
+// 大文件下载中断后下次从已下载部分继续，不会从头再来。
+const DL_MAX_RETRIES = 6;                 // 每次重试从断点继续，最多 6 轮
+let dlAbort = null, dlState = null;   // dlState: {ver, pct, file, downloaded, installing}
+function updateInstallerName() {
+  return process.platform === 'win32' ? 'Cindy-Pet-Setup-win-x64.exe'
+    : process.platform === 'darwin' ? 'Cindy-Pet-mac-universal.dmg'
+    : 'Cindy-Pet-linux-x86_64.AppImage';
+}
+async function downloadUpdate(info) {
+  if (dlState && (dlState.downloading || dlState.downloaded)) return dlState;
+  const name = updateInstallerName();
+  const asset = (info.assets || []).find((a) => a && a.name === name);
+  if (!asset || !asset.browser_download_url) return { error: 'release 里没有本平台的安装包' };
+  const dst = path.join(app.getPath('temp'), `cindy-pet-update-${info.latest}-${name}`);
+  dlState = { ver: info.latest, pct: 0, file: dst, downloaded: false, downloading: true, installing: false, got: 0, total: asset.size || 0 };
+  toPet('update:progress', { ...dlState });
+  dlAbort = new AbortController();
+  let lastErr = null;
+  for (let attempt = 1; attempt <= DL_MAX_RETRIES; attempt++) {
+    try {
+      const startPos = fs.existsSync(dst) ? fs.statSync(dst).size : 0;
+      if (asset.size && startPos >= asset.size) { // 上次已下完
+        dlState.downloading = false; dlState.downloaded = true; dlState.pct = 100;
+        break;
+      }
+      plog('[update] 下载第' + attempt + '轮，从 ' + startPos + ' 字节续传');
+      const r = await fetch(asset.browser_download_url, {
+        redirect: 'follow',
+        headers: startPos ? { Range: `bytes=${startPos}-` } : {},
+        signal: dlAbort.signal
+      });
+      if (!r.ok && r.status !== 206) throw new Error('HTTP ' + r.status);
+      const total = +(r.headers.get('content-range') || '').split('/')[1] || +(r.headers.get('content-length') || 0) + startPos || asset.size || 0;
+      let got = startPos;
+      const out = fs.createWriteStream(dst, { flags: 'a' });   // 追加写：断点续传
+      const reader = r.body.getReader();
+      let stallTimer = setTimeout(() => dlAbort.abort(), 60000);   // 60 秒无进度才断开重试
+      dlState.total = total;
+      while (true) {
+        const { done, value } = await reader.read();
+        clearTimeout(stallTimer); stallTimer = setTimeout(() => dlAbort.abort(), 60000);
+        if (done) break;
+        await new Promise((res) => out.write(value, res));
+        got += value.length; dlState.got = got;
+        if (total) { const pct = Math.round((got / total) * 100); if (pct !== dlState.pct) { dlState.pct = pct; toPet('update:progress', { ...dlState }); } }
+      }
+      clearTimeout(stallTimer);
+      await new Promise((res) => out.end(res));
+      if (asset.size && fs.statSync(dst).size !== asset.size) throw new Error(`大小不符：${fs.statSync(dst).size} != ${asset.size}`);
+      dlState.downloading = false; dlState.downloaded = true; dlState.pct = 100;
+      plog('[update] 下载完成', dst, fs.statSync(dst).size);
+      toPet('update:progress', { ...dlState });
+      showUpdateNotification({ ...info, downloaded: true, file: dst });
+      toPet('pet:say', { text: `新版本 v${info.latest} 下载好了！点我身上的卡片就可以更新，也可以等退出时自动装～`, mood: 'happy' });
+      toPet('update:available', { ...info, downloaded: true, file: dst });
+      return dlState;
+    } catch (e) {
+      lastErr = e.message || String(e);
+      plog('[update] 下载中断(第' + attempt + '轮)', lastErr);
+      if (dlAbort && dlAbort.signal.aborted && !/timeout/i.test(lastErr)) {
+        // 用户主动取消
+        dlState.downloading = false; return { ...dlState, error: '已取消' };
+      }
+      dlAbort = new AbortController();
+      await new Promise((res) => setTimeout(res, 3000 * attempt));   // 退避后重试（文件保留，续传）
+    }
+  }
+  dlState.downloading = false;
+  const err = `下载重试 ${DL_MAX_RETRIES} 轮都没完成，请手动下载：${info.url}`;
+  toPet('pet:say', { text: '安装包下载没成功…可能是网络问题，稍后再试，或手动去 GitHub 下载。', mood: 'comfort' });
+  return { ...dlState, error: err, lastError: lastErr };
+}
+ipcMain.handle('update:download', () => { if (!lastUpdateInfo || !lastUpdateInfo.newer) return { error: '没有可用的新版本' }; return downloadUpdate(lastUpdateInfo); });
+ipcMain.handle('update:install', () => installUpdate());
+ipcMain.handle('update:dlstate', () => dlState ? { ...dlState } : null);
+function installUpdate() {
+  if (!dlState || !dlState.downloaded || !fs.existsSync(dlState.file)) return { error: '安装包还没下载好' };
+  if (dlState.installing) return { installing: true };
+  dlState.installing = true;
+  plog('[update] 启动安装器', dlState.file);
+  try {
+    if (process.platform === 'win32') {
+      // NSIS 静默安装：/S 静默；安装器会复用已有目录，装完由它重启应用（allowToChangeInstallationDirectory 但静默时走默认）
+      const child = require('child_process').spawn(dlState.file, ['/S'], { detached: true, stdio: 'ignore' });
+      child.unref();
+      setTimeout(() => { quitting = true; app.quit(); }, 1500);
+      return { installing: true };
+    }
+    if (process.platform === 'darwin') { shell.openPath(dlState.file); return { opened: true }; }   // dmg 手动装
+    fs.chmodSync(dlState.file, 0o755); shell.openPath(dlState.file); return { opened: true };     // AppImage 直接运行
+  } catch (e) { dlState.installing = false; plog('[update] 安装失败', e.message); return { error: String(e.message || e) }; }
+}
 
 let cfgPath, cfg, win, settingsWin, panelWin, server, tray;
 let agentSnap = { state: 'idle' };
@@ -397,6 +553,8 @@ function updateTray() {
     { label: '听歌时随节拍律动（读取系统声音大小，不录音）', type: 'checkbox', checked: cfg.musicDance !== false, click: (i) => { cfg.musicDance = i.checked; saveConfig(); controlLoopback(); } },
     uiBridgeMenuItem(),
     { label: '开机自动启动', type: 'checkbox', checked: autoStartOn(), click: (i) => setAutoStart(i.checked) },
+    { type: 'separator' },
+    { label: `检查更新（当前 v${app.getVersion()}）`, click: () => { checkUpdate(true); updateTray(); } },
     { label: '设置…', click: openSettings },
     { label: '退出', click: () => { quitting = true; app.quit(); } }
   ]));
@@ -703,6 +861,8 @@ else {
       desktopCapturer.getSources({ types: ['screen'] }).then((src) => callback({ video: src[0], audio: 'loopback' })).catch(() => callback({}));
     });
     createWindow(); createTray(); startServer(); applyFollow(); applyMediaSense(); controlLoopback();
+    // 启动 15 秒后自动检查一次更新；离线/网络慢时静默失败，不打扰
+    if (cfg.autoUpdateCheck !== false) setTimeout(() => { if (!updateBusy) checkUpdate(false); }, 15000);
     const u = process.argv.find(a => a.startsWith(PROTOCOL + '://')); if (u) setTimeout(() => handleUrl(u), 1500);
   });
 }

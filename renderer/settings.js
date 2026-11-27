@@ -14,6 +14,7 @@ function stash() {
   $('#apiType').value = cfg.api.type || 'openai'; $('#baseUrl').value = cfg.api.baseUrl; $('#apiKey').value = cfg.api.apiKey; $('#model').value = cfg.api.model;
   $('#userName').value = cfg.userName; $('#care').value = cfg.careIntervalMin; $('#scale').value = cfg.scale;
   $('#walk').checked = !!cfg.walk; $('#port').value = cfg.notifyPort; $('#token').value = cfg.notifyToken;
+  $('#autoUpdate').checked = cfg.autoUpdateCheck !== false;
   $('#backend').value = cfg.chatBackend || 'api'; $('#relayUrl').value = cfg.relayUrl || 'http://127.0.0.1:47832';
   fillRole();
 })();
@@ -35,7 +36,19 @@ $('#save').onclick = async () => {
     roles, activeRole: cur, userName: $('#userName').value.trim() || '你',
     careIntervalMin: Math.max(5, +$('#care').value || 45),
     scale: Math.min(1.4, Math.max(0.5, +$('#scale').value || 1)),
-    walk: $('#walk').checked, notifyPort: +$('#port').value || 47831, notifyToken: $('#token').value.trim()
+    walk: $('#walk').checked, notifyPort: +$('#port').value || 47831, notifyToken: $('#token').value.trim(),
+    autoUpdateCheck: $('#autoUpdate').checked
   });
   $('#msg').textContent = '已保存 ✓'; setTimeout(() => $('#msg').textContent = '', 2000);
+};
+
+// 立即检查更新：结果显示在按钮旁，有新版时同步弹桌宠播报 + 系统通知
+$('#checkNow').onclick = async () => {
+  $('#updMsg').textContent = '正在检查…';
+  try {
+    const r = await window.pet.updateCheck(true);
+    if (r.error) $('#updMsg').textContent = '检查失败：' + r.error;
+    else if (r.newer) $('#updMsg').textContent = `发现新版本 v${r.latest}！`;
+    else $('#updMsg').textContent = `已是最新（v${r.current}）`;
+  } catch (e) { $('#updMsg').textContent = '检查失败'; }
 };
