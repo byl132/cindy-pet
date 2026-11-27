@@ -439,7 +439,7 @@ let askPlugin = [], askUi = [], askItems = [];
 const uiMap = new Map();
 let uiProc = null, uiBuf = '', uiSeq = 0; const uiWait = new Map();
 // Windows 默认开启；macOS / Linux 是实验功能（没经过真机验证），默认关闭，要在菜单里手动开启
-const uiEnabled = () => (process.platform === 'win32' ? cfg.cindyUiBridge !== false : cfg.cindyUiBridge === true);
+const uiEnabled = () => (process.platform === 'win32' ? !cfg || cfg.cindyUiBridge !== false : !!cfg && cfg.cindyUiBridge === true);
 function uiScriptPath(name = 'cindy-ui.ps1') {
   const dst = path.join(app.getPath('userData'), name);
   try { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.writeFileSync(dst, fs.readFileSync(path.join(__dirname, 'scripts', name))); } catch (e) { console.error('cindy-ui copy', e.message); }
@@ -525,13 +525,17 @@ function pushAsk() {
   if (askItems.length && win && !win.isVisible() && !manualHidden) showPet();
 }
 let uiBusy = false, uiIdleTicks = 0, uiNotWaiting = 0;
+// UIA 桥进程冷启动实测要 6–7 秒（PowerShell 启动 + UIA 初始化），所以：
+// 1) 一进入“等你”状态就预热进程，不等第一次扫描才启动；2) 闲理后保留进程约 2 分钟再回收。
+function uiWarm() { if (process.platform === 'win32' && uiEnabled() && !uiProc) uiStart(); }
 async function uiTick(force) {
   if (uiBusy || !uiEnabled()) return;
   const waiting = agentSnap && (agentSnap.state === 'waiting-approval' || agentSnap.state === 'waiting-input') && (!agentSnap.source || agentSnap.source === 'cindy');
+  if (waiting) uiWarm();
   if (!waiting && !force) {
     // Cindy 不再“等你”了（在 Cindy 里处理掉了 / 超时）：连续两次确认后收起卡片
     if (askUi.length && ++uiNotWaiting >= 2) { askUi = []; uiMap.clear(); pushAsk(); }
-    if (!askUi.length) { uiIdleTicks++; if (uiIdleTicks > 3) uiStop(); }
+    if (!askUi.length) { uiIdleTicks++; if (uiIdleTicks > 80) uiStop(); }   // 约 2 分钟无请求才回收进程，避免下次冷启动延迟
     return;
   }
   uiNotWaiting = 0; uiIdleTicks = 0; uiBusy = true;
@@ -555,7 +559,7 @@ async function uiTick(force) {
     }
   } finally { uiBusy = false; }
 }
-setInterval(() => uiTick(false), 1500);
+setInterval(() => uiTick(false), 900);
 async function uiAnswer(p) {
   const x = uiMap.get(p.ref); if (!x) return { ok: false, error: '这条请求已经不在了。' };
   if (p.open) { await uiCall({ cmd: 'focus' }); return { ok: true }; }
