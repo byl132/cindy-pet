@@ -131,10 +131,6 @@ const methods = {
     const d = await deskRequest('POST', '/state', shared);
     return { ok: true, desktop: !!d.ok, error: d.ok ? undefined : d.error };
   },
-  'desk/install-state': async () => require('./installer.cjs').state(),     // 桌面版是否已安装 / 在线 / 安装进度
-  'desk/install': async () => require('./installer.cjs').start(),            // 后台下载并安装桌面版（只下载作者的 GitHub Release）
-  'desk/install-cancel': async () => require('./installer.cjs').cancel(),
-  'desk/launch': async () => require('./installer.cjs').launch(),
   'desk/status': async () => {
     const d = await deskRequest('GET', '/ping');
     return { ok: true, desktopOnline: !!d.ok, desktopRole: d.role || null, desktop: d.ok ? { outfit: d.outfit, role: d.roleId, userName: d.userName, at: d.at || 0, media: d.media || null, bpm: d.mediaBpm || 0 } : null, relayPort: RELAY_PORT, relayListening: !listenError, relayError: listenError, polling: !!poller };

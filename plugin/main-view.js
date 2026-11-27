@@ -376,44 +376,6 @@ function buildBar() {
   $('#sync').onchange = (e) => { S.sync = e.target.checked; saveState(); if (S.sync) { say('好，设置和我的话都会同步给桌面版。'); pingDesktop(); } };
 }
 function markOutfit() { document.querySelectorAll('#outfits .chip').forEach((b) => b.classList.toggle('on', b.dataset.id === S.outfit)); }
-// ---- 桌面版：没装就自动下载安装（只在第一次、且没点“先不装”时自动开始）----
-let instTimer = 0;
-async function checkInstall(on) {
-  const stat = $('#dlstat'), go = $('#dlgo'), skip = $('#dlskip');
-  const hide = () => { stat.classList.add('hidden'); go.classList.add('hidden'); skip.classList.add('hidden'); };
-  if (on) { hide(); clearTimeout(instTimer); return; }
-  const r = await request({ type: 'install-state' }, 20000);
-  if (!r || !r.ok || !r.supported) { hide(); return; }
-  const j = r.job || {};
-  const busy = j.state === 'downloading' || j.state === 'installing' || j.state === 'starting';
-  stat.classList.remove('hidden');
-  if (busy) {
-    $('#dl').classList.remove('hidden');
-    stat.textContent = (j.note || '正在安装…') + (j.state === 'downloading' ? ' ' + (j.pct || 0) + '%' : '');
-    go.classList.add('hidden'); skip.classList.add('hidden');
-    clearTimeout(instTimer); instTimer = setTimeout(() => pingDesktop(), 2000);
-    return;
-  }
-  if (j.state === 'error') {
-    stat.textContent = '自动安装没成功：' + j.error + '。可以重试，或用下面的链接手动下载。';
-    go.textContent = '重试'; go.onclick = async () => { go.classList.add('hidden'); await request({ type: 'install' }, 20000); pingDesktop(); }; go.classList.remove('hidden'); skip.classList.add('hidden');
-    return;
-  }
-  if (r.installed) {
-    stat.textContent = '桌面版已安装，但还没在运行。';
-    go.textContent = '启动桌面版'; go.onclick = async () => { go.classList.add('hidden'); await request({ type: 'launch' }, 20000); setTimeout(pingDesktop, 3000); }; go.classList.remove('hidden'); skip.classList.add('hidden');
-    return;
-  }
-  if (!S.installOff && !S.installTried) {                      // 第一次：自动开始下载安装
-    S.installTried = true; saveState();
-    stat.textContent = '正在准备下载桌面版…'; skip.textContent = '先不装'; skip.classList.remove('hidden'); go.classList.add('hidden');
-    await request({ type: 'install' }, 20000); pingDesktop(); return;
-  }
-  stat.textContent = j.state === 'done' ? '桌面版已安装，等它启动后这里会亮绿点。' : '还没安装桌面版。';
-  go.textContent = '自动下载安装'; go.onclick = async () => { S.installOff = false; saveState(); go.classList.add('hidden'); await request({ type: 'install' }, 20000); pingDesktop(); };
-  go.classList.remove('hidden'); skip.classList.add('hidden');
-}
-$('#dlskip').onclick = async () => { S.installOff = true; saveState(); try { await request({ type: 'install-cancel' }, 5000); } catch {} pingDesktop(); };
 let offlineN = 0;
 async function pingDesktop() {
   const r = await request({ type: 'status' }, 10000);
@@ -425,9 +387,7 @@ async function pingDesktop() {
   if (on && S.sync && r.desktop) applyMedia(r.desktop.media, r.desktop.bpm);          // 页面刚打开 / 错过推送时，也能追上桌面版正在听什么
   offlineN = on ? 0 : offlineN + 1;
   { const p = (navigator.userAgent || '') + ' ' + (navigator.platform || ''); const me = /Mac/i.test(p) ? 'mac' : /Linux|X11/i.test(p) && !/Android/i.test(p) ? 'linux' : 'win'; document.querySelectorAll('#dl a').forEach((e) => e.classList.toggle('me', e.dataset.os === me)); }       // 突出当前系统对应的下载按钮
-  $('#dl').classList.toggle('hidden', on || (offlineN < 2 && S.dlSeen));       // 首次打开且没检测到桌面版：马上提示下载；之后连续两次没连上才再提示，避免偶发抖动
-  if (!on && !S.dlSeen) { S.dlSeen = true; saveState(); }
-  checkInstall(on).catch(() => {});
+  $('#dl').classList.toggle('hidden', on || offlineN < 2);                        // 连续两次没连上桌面版才提示；提示只给链接，不自动下载
   dot.className = 'dot ' + (on ? 'on' : 'off'); dot.title = on ? '桌面版在线' : '未检测到桌面版';
   $('#hint').textContent = on
     ? '桌面版在线。想让它用 Cindy 的模型聊天：桌面版右键 → 设置 → 对话来源选“Cindy 模型”（需保持本页面打开）。'

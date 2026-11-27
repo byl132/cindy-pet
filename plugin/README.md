@@ -32,4 +32,8 @@ The pet follows what Cindy is doing (typing, thinking, waiting for your approval
 Manual actions (sit, stretch, hug the cat, cheer...), petting and sleep/wake are mirrored between the pet page in Cindy and the desktop edition (Windows and macOS) when sync is on. Remote-triggered actions are never echoed back.
 
 ## Privacy
-The plugin only talks to `127.0.0.1` on your computer (ports 47831 desktop, 47832 relay). It never sends data to any third-party server. Project folders are only read after you pick them, and only statistics are kept.
+- **Local only:** the plugin talks to `127.0.0.1` on your computer (ports 47831 for the desktop edition, 47832 for the relay). Nothing is sent to a plugin server.
+- **Chat with the pet:** when you chat with the pet in Cindy, the plugin sends the following to the model you selected in Cindy: the role prompt, the last 16 chat messages, Cindy's current work state (idle / working / thinking / waiting / error), and a usage percentage if you set a budget. The data goes to Cindy, and from there to your chosen model provider. If that model is an online service, the provider receives this text.
+- **Not sent:** project file contents, file names, or song and video titles. Project folders are only read after you pick them, and only statistics are kept locally.
+- **Desktop edition:** the plugin does not download or install the desktop edition. Install it yourself from the official page; the plugin only connects to it locally.
+
