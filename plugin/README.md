@@ -32,8 +32,28 @@ The pet follows what Cindy is doing (typing, thinking, waiting for your approval
 Manual actions (sit, stretch, hug the cat, cheer...), petting and sleep/wake are mirrored between the pet page in Cindy and the desktop edition (Windows and macOS) when sync is on. Remote-triggered actions are never echoed back.
 
 ## Privacy
-- **Local only:** the plugin talks to `127.0.0.1` on your computer (ports 47831 for the desktop edition, 47832 for the relay). Nothing is sent to a plugin server.
-- **Chat with the pet:** when you chat with the pet in Cindy, the plugin sends the following to the model you selected in Cindy: the role prompt, the last 16 chat messages, Cindy's current work state (idle / working / thinking / waiting / error), and a usage percentage if you set a budget. The data goes to Cindy, and from there to your chosen model provider. If that model is an online service, the provider receives this text.
-- **Not sent:** project file contents, file names, or song and video titles. Project folders are only read after you pick them, and only statistics are kept locally.
-- **Desktop edition:** the plugin does not download or install the desktop edition. Install it yourself from the official page; the plugin only connects to it locally.
 
+**When data is sent**
+- Only when you send a message to the pet in Cindy's pet page. Nothing is sent in the background, and there is no automatic upload.
+
+**What is sent to the model (chat only)**
+- The pet's role prompt and the fixed behavior rules.
+- The last 16 messages of the current chat.
+- Cindy's current work state (idle / working / thinking / waiting for confirmation / error).
+- Today's remaining budget as a percentage, only if you have set a budget.
+
+**Who receives it**
+- The text goes to Cindy, and Cindy forwards it to the model you selected in Cindy's settings.
+- If that model is an online service, its provider receives the text. The plugin cannot see or choose the provider; the provider is whichever model you configured in Cindy.
+- If you use a local model, the text stays on your computer.
+
+**What stays on your computer and is not sent to any model**
+- Project folders are read only after you pick them, and only for statistics (languages, file counts, TODO counts, recent file paths, Git branch and commit titles). These go only to the desktop pet over `127.0.0.1`, never to a model or a server.
+- The usage ledger and budget are saved in the plugin's local data folder.
+- Song and video titles, artist names, and file contents are not read or sent.
+
+**Local communication**
+- The plugin talks only to `127.0.0.1` on your computer (ports 47831 for the desktop edition, 47832 for the relay). It has no plugin server of its own.
+
+**Desktop edition**
+- The plugin never downloads or installs the desktop edition. Install it yourself from the official page; the plugin only connects to it locally.
